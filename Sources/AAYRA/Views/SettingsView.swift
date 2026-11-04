@@ -30,6 +30,8 @@ struct SettingsView: View {
     @AppStorage(AppSettings.Key.animateIcon) private var animateIcon = true
     @AppStorage(AppSettings.Key.showPercentInMenuBar) private var showPercent = false
     @AppStorage(AppSettings.Key.showNetworkInMenuBar) private var showNetworkSpeed = false
+    @AppStorage(AppSettings.Key.checkForUpdates) private var checkForUpdates = false
+    private var updates = UpdateChecker.shared
     @AppStorage(AppSettings.Key.shortcut) private var shortcut = AppSettings.Shortcut.optionCommandM.rawValue
     @AppStorage(AppSettings.Key.refreshInterval) private var refreshInterval = 1.0
     @AppStorage(AppSettings.Key.temperatureUnit) private var temperatureUnit = AppSettings.TemperatureUnit.system.rawValue
@@ -139,6 +141,27 @@ struct SettingsView: View {
                     .foregroundStyle(.secondary)
             }
 
+            Section {
+                Toggle("Check for updates automatically", isOn: $checkForUpdates)
+                    .onChange(of: checkForUpdates) { _, on in
+                        if on { updates.checkNow() }
+                    }
+                HStack(spacing: 8) {
+                    updateStatus
+                    Spacer(minLength: 8)
+                    if updates.status == .checking {
+                        ProgressView().controlSize(.small)
+                    }
+                    Button("Check Now") { updates.checkNow() }
+                        .disabled(updates.status == .checking)
+                }
+            } header: {
+                Text("Updates")
+            } footer: {
+                Text("Asks GitHub once a day whether a newer release exists. Nothing is downloaded or installed, and nothing about you or your Mac is sent.")
+                    .foregroundStyle(.secondary)
+            }
+
             Section("About") {
                 HStack {
                     Text("Author")
@@ -153,6 +176,32 @@ struct SettingsView: View {
         }
         .formStyle(.grouped)
         .frame(width: 460, height: 700)
+    }
+
+    /// Result of the last update check, in one line.
+    @ViewBuilder
+    private var updateStatus: some View {
+        switch updates.status {
+        case .idle:
+            Text(lastCheckedText ?? "Version \(version)").foregroundStyle(.secondary)
+        case .checking:
+            Text("Checking…").foregroundStyle(.secondary)
+        case .upToDate:
+            Label("AAYRA \(version) is up to date", systemImage: "checkmark.circle.fill")
+                .foregroundStyle(.secondary)
+        case .noReleases:
+            Text("No releases published yet").foregroundStyle(.secondary)
+        case let .available(newVersion, url):
+            Link(destination: url) {
+                Label("AAYRA \(newVersion) is available ↗", systemImage: "arrow.down.circle.fill")
+            }
+        case let .failed(message):
+            Label(message, systemImage: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+        }
+    }
+
+    private var lastCheckedText: String? {
+        updates.lastChecked.map { "Last checked \($0.formatted(.relative(presentation: .named)))" }
     }
 
     /// A label with a small icon on the left and a clickable link on the right.

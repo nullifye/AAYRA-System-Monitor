@@ -19,7 +19,7 @@ Native Swift and SwiftUI · Apple Silicon · macOS 15 or later · under 1 MB
 - 🧠 **CPU and memory.** Usage history, per-core load grouped by Performance and Efficiency cores, chip and cache details, thermal state, and top processes by CPU and by memory. Helper processes are added up under their app's real name (e.g. *Visual Studio Code · 16*), like Activity Monitor. Memory shows app / wired / compressed / cached, pressure and swap.
 - 🎮 **GPU.** Live GPU load with a history chart, split into renderer (pixels) and tiler (geometry) work, plus the unified memory the GPU is using and allocated, core count and GPU restarts. Read from the graphics driver, no admin rights needed. The card is off by default; turn it on in Settings → Sections.
 - 🌐 **Network.** Live ↓/↑ speed chart, Wi-Fi name, signal, noise and SNR, channel and band, standard, security, local and public IP (click to copy), router, DNS and MAC. A **VPN** badge appears while a VPN is connected.
-- ⚙️ **Settings.** Launch at Login, a keyboard shortcut to open the panel from any app, icon animation, CPU % and network speed in the menu bar, which cards to show, refresh rate (1, 2 or 5 s), temperature unit, and an opt-out for the public IP lookup.
+- ⚙️ **Settings.** Launch at Login, a keyboard shortcut to open the panel from any app, icon animation, CPU % and network speed in the menu bar, which cards to show, refresh rate (1, 2 or 5 s), temperature unit,, an optional update check (off by default), and an opt-out for the public IP lookup.
 - 🪶 **Light.** About 2–4 % CPU while idling in the menu bar, and the whole app is under 1 MB.
 
 ## Install
@@ -112,7 +112,9 @@ GitHub Actions ([`.github/workflows/build.yml`](.github/workflows/build.yml)) bu
 
 ## Privacy and notes
 
-- **Network use.** The only network request is the public IP lookup at `https://api.ipify.org`. It runs when the panel opens, is cached for 5 minutes, and can be turned off in Settings.
+- **Network use.** AAYRA makes at most two kinds of request, and you control both:
+  - **Public IP lookup** at `https://api.ipify.org`. It runs when the panel opens, is cached for 5 minutes, and can be turned off in Settings → Privacy.
+  - **Update check** at `https://api.github.com` (this repo's latest release). It's **off by default**: it runs only if you click **Check Now** or turn on **Check for updates automatically** (then at most once a day). It sends nothing about you or your Mac, and never downloads or installs anything. When a newer version exists, a badge appears in the panel footer linking to the release page.
 - **Wi-Fi name.** macOS only reveals the Wi-Fi name to apps with Location Services access, so AAYRA asks once. Nothing is recorded or sent.
 - **No CPU temperature.** Apple Silicon only exposes it through private APIs. Battery and SSD temperatures are shown.
 - **Battery health** is read from `system_profiler`, so it matches System Settings. The pack assembler comes from the serial-number prefix, and the cell maker from the battery's own manufacturer data.
@@ -120,6 +122,6 @@ GitHub Actions ([`.github/workflows/build.yml`](.github/workflows/build.yml)) bu
 
 ## Versions
 
-- **Unreleased.** GPU card and detail panel. External drives and other volumes in Storage, with eject. Global keyboard shortcut (⌥⌘M by default) to open the panel. Top Processes rows expand to show an app's individual processes (one at a time). Detail panels respond to the first click and scroll when taller than the screen.
+- **Unreleased.** Optional update check against GitHub Releases (off by default). GPU card and detail panel (off by default). External drives and other volumes in Storage, with eject. Global keyboard shortcut (⌥⌘M by default) to open the panel. Top Processes rows expand to show an app's individual processes (one at a time). Detail panels respond to the first click and scroll when taller than the screen.
 - **1.3.** Quick-action buttons in detail panels (Manage Storage, Battery and Wi-Fi settings, Activity Monitor), processes grouped under their app's real name, live disk read/write speed, VPN indicator, optional network speed in the menu bar, author and links in Settings, scrolling detail panels on small screens, and charts and background refreshes that follow the refresh-rate setting.
 - **1.2.** Floating dashboard with big numbers, click-to-open detail panels, Settings window, SSD SMART health, deep battery details, redesigned per-core view, Control Center–style visuals.

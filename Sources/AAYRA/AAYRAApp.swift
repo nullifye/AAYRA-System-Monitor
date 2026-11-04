@@ -102,6 +102,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         let monitor = SystemMonitor()
         monitor.start()
+        UpdateChecker.shared.startAutomaticChecks()   // does nothing unless turned on in Settings
         self.monitor = monitor
         let controller = StatusItemController(monitor: monitor)
         statusController = controller

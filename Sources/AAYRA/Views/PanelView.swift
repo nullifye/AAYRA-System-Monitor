@@ -432,6 +432,7 @@ private struct BevelWordmark: View {
 
 private struct FooterView: View {
     private let version = AppInfo.version
+    private var updates = UpdateChecker.shared
 
     var body: some View {
         HStack(spacing: 6) {
@@ -443,6 +444,20 @@ private struct FooterView: View {
                     .monospacedDigit()
             }
             .accessibilityElement(children: .combine)
+            if let update = updates.availableUpdate {
+                Button {
+                    NSWorkspace.shared.open(update.url)
+                } label: {
+                    Text("\(update.version) available")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 2)
+                        .background(Color.accentColor.gradient, in: Capsule())
+                }
+                .buttonStyle(.plain)
+                .help("Open the AAYRA \(update.version) release page")
+            }
             Spacer()
             iconButton("Settings", symbol: "gearshape") { SettingsWindow.show() }
                 .keyboardShortcut(",")

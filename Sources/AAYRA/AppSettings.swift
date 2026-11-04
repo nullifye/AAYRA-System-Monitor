@@ -8,6 +8,10 @@ enum AppSettings {
         static let showPercentInMenuBar = "showPercentInMenuBar"
         static let showNetworkInMenuBar = "showNetworkInMenuBar"
         static let shortcut = "panelShortcut"
+        static let checkForUpdates = "checkForUpdates"
+        static let lastUpdateCheck = "lastUpdateCheck"
+        static let latestKnownVersion = "latestKnownVersion"
+        static let latestKnownURL = "latestKnownURL"
         static let refreshInterval = "refreshInterval"
         static let fetchPublicIP = "fetchPublicIP"
         static let temperatureUnit = "temperatureUnit"
@@ -41,6 +45,8 @@ enum AppSettings {
     static var animateIcon: Bool { bool(Key.animateIcon, default: true) }
     static var showPercentInMenuBar: Bool { bool(Key.showPercentInMenuBar, default: false) }
     static var showNetworkInMenuBar: Bool { bool(Key.showNetworkInMenuBar, default: false) }
+    /// Automatic update checks are off unless turned on in Settings → Updates.
+    static var checkForUpdates: Bool { bool(Key.checkForUpdates, default: false) }
     /// The GPU card is off unless turned on in Settings → Sections.
     static var showsGPU: Bool { bool(Key.showsSection(.gpu), default: false) }
     static var shortcut: Shortcut {

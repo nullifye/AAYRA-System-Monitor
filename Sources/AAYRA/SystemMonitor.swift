@@ -41,7 +41,17 @@ final class SystemMonitor {
     private let cpuProvider = CPUProvider()
     private let networkProvider = NetworkProvider()
     private let wifiProvider = WiFiNameProvider()
-    private var tickCount = 0
+    // When each periodic job last ran (system uptime, seconds). Jobs run on elapsed time, not on
+    // sample counts, so they keep their schedule whatever the refresh interval is.
+    private var lastDetailsRefresh: TimeInterval = 0
+    private var lastSlowRefresh: TimeInterval = 0
+    private var lastSSDRefresh: TimeInterval = 0
+    private var lastHealthRefresh: TimeInterval = 0
+    /// Refresh interval the current chart history was sampled at.
+    private(set) var historyInterval = AppSettings.refreshInterval
+
+    /// Time span the charts cover: a fixed number of samples × the refresh interval.
+    var historySpan: TimeInterval { Double(Self.historyLength) * historyInterval }
     private var publicIPFetchedAt: Date?
     private var publicIPInterface: String?
     private var reportedHealth: BatteryProvider.ReportedHealth?
@@ -53,7 +63,8 @@ final class SystemMonitor {
         _ = cpuProvider.sample()            // prime the tick baseline
         _ = networkProvider.sample()
         refreshSlowMetrics()
-        ssd = SSDHealthProvider.sample()
+        refreshSSD()
+        lastHealthRefresh = Self.now
         Task { await refreshReportedHealth() }
         wifiProvider.onAuthorizationChange = { [weak self] in self?.refreshWiFiName() }
     }
@@ -68,8 +79,23 @@ final class SystemMonitor {
         }
     }
 
+    private static var now: TimeInterval { ProcessInfo.processInfo.systemUptime }
+
+    /// True once `period` seconds have passed since `last` (with a little slack for timer jitter).
+    private static func isDue(_ last: TimeInterval, every period: TimeInterval, now: TimeInterval) -> Bool {
+        now - last >= period - 0.25
+    }
+
     private func tick() {
-        tickCount += 1
+        let now = Self.now
+        let interval = AppSettings.refreshInterval
+        if interval != historyInterval {
+            // Samples taken at different intervals can't share one time axis, so start the charts afresh.
+            historyInterval = interval
+            cpuHistory = Array(repeating: 0, count: Self.historyLength)
+            downloadHistory = Array(repeating: 0, count: Self.historyLength)
+            uploadHistory = Array(repeating: 0, count: Self.historyLength)
+        }
 
         if let sample = cpuProvider.sample() {
             cpu = sample
@@ -77,7 +103,7 @@ final class SystemMonitor {
             smoothedCPU += 0.35 * (sample.total - smoothedCPU)
         }
         if let m = MemoryProvider.sample() { memory = m }
-        if isPanelOpen && tickCount % 3 == 0 {
+        if isPanelOpen && Self.isDue(lastDetailsRefresh, every: 3, now: now) {
             sampleProcesses()
             refreshNetworkDetails()
         }
@@ -92,12 +118,21 @@ final class SystemMonitor {
             refreshWiFiName()
         }
 
-        if tickCount % 10 == 0 { refreshSlowMetrics() }
-        if tickCount % 60 == 0 { ssd = SSDHealthProvider.sample() }             // SMART changes slowly
-        if tickCount % 1800 == 0 { Task { await refreshReportedHealth() } }      // every 30 min
+        if Self.isDue(lastSlowRefresh, every: 10, now: now) { refreshSlowMetrics() }
+        if Self.isDue(lastSSDRefresh, every: 60, now: now) { refreshSSD() }      // SMART changes slowly
+        if Self.isDue(lastHealthRefresh, every: 1800, now: now) {                // every 30 min
+            lastHealthRefresh = now
+            Task { await refreshReportedHealth() }
+        }
+    }
+
+    private func refreshSSD() {
+        lastSSDRefresh = Self.now
+        ssd = SSDHealthProvider.sample()
     }
 
     private func refreshSlowMetrics() {
+        lastSlowRefresh = Self.now
         if let d = DiskProvider.sample() { disk = d }
         battery = BatteryProvider.sample().map { b in
             var b = b
@@ -136,7 +171,7 @@ final class SystemMonitor {
         sampleProcesses()   // CPU ranking appears on the next sample (needs two readings)
         refreshNetworkDetails()
         refreshSlowMetrics()
-        ssd = SSDHealthProvider.sample()
+        refreshSSD()
         if network.interfaceKind == "Wi-Fi" { wifiProvider.requestAccessIfNeeded() }
         refreshPublicIP(force: false)
     }
@@ -147,6 +182,7 @@ final class SystemMonitor {
     }
 
     private func sampleProcesses() {
+        lastDetailsRefresh = Self.now
         let result = processSampler.sample(top: 5)
         topProcesses = result.memory
         topCPUProcesses = result.cpu

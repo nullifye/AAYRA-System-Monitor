@@ -15,32 +15,61 @@ struct DetailPanel<Leading: View, Trailing: View>: View {
     @ViewBuilder var leading: () -> Leading
     @ViewBuilder var trailing: () -> Trailing
 
+    /// Natural height of the two columns, measured as they lay out.
+    @State private var columnsHeight: CGFloat = 0
+
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            HStack(spacing: 11) {
-                IconBadge(symbol: symbol, color: tint, size: 36)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(title).font(.title3.weight(.semibold))
-                    if let subtitle {
-                        Text(subtitle)
-                            .font(.callout)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-                    }
-                }
-                Spacer(minLength: 0)
-            }
-            HStack(alignment: .top, spacing: 14) {
-                VStack(spacing: 14) { leading() }
-                    .frame(maxWidth: .infinity)
-                VStack(spacing: 14) { trailing() }
-                    .frame(maxWidth: .infinity)
+            header
+            // The panel normally sizes to its content. Only when that would be taller than the screen
+            // do the columns scroll, below a header that stays in place.
+            if columnsHeight > maxColumnsHeight {
+                ScrollView { columns }
+                    .frame(height: maxColumnsHeight)
+            } else {
+                columns
             }
         }
         .padding(16)
         .frame(width: Metrics.detailWidth)
         .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private var header: some View {
+        HStack(spacing: 11) {
+            IconBadge(symbol: symbol, color: tint, size: 36)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title).font(.title3.weight(.semibold))
+                if let subtitle {
+                    Text(subtitle)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+    }
+
+    private var columns: some View {
+        HStack(alignment: .top, spacing: 14) {
+            VStack(spacing: 14) { leading() }
+                .frame(maxWidth: .infinity)
+            VStack(spacing: 14) { trailing() }
+                .frame(maxWidth: .infinity)
+        }
+        .onGeometryChange(for: CGFloat.self, of: { $0.size.height }) { columnsHeight = $0 }
+    }
+
+    /// Room for the columns on the current screen, after the header, padding and popover frame.
+    private var maxColumnsHeight: CGFloat {
+        #if DEBUG
+        let override = UserDefaults.standard.double(forKey: "debugDetailMaxHeight")   // for testing small screens
+        if override > 0 { return override }
+        #endif
+        let screenHeight = (NSApp.keyWindow?.screen ?? NSScreen.main)?.visibleFrame.height ?? 800
+        return max(240, screenHeight - 150)
     }
 }
 
@@ -563,7 +592,7 @@ struct NetworkDetail: View {
                     .padding(.vertical, 2)
                 DetailRow("Download", Format.rate(net.downloadBytesPerSec), dot: Palette.download)
                 DetailRow("Upload", Format.rate(net.uploadBytesPerSec), dot: Palette.upload)
-                DetailRow("Peak (last min)", "↓ \(Format.rate(monitor.downloadHistory.max() ?? 0)) · "
+                DetailRow("Peak (last \(Format.span(monitor.historySpan)))", "↓ \(Format.rate(monitor.downloadHistory.max() ?? 0)) · "
                           + "↑ \(Format.rate(monitor.uploadHistory.max() ?? 0))")
                 DetailRow("Since boot", "↓ \(Format.bytes(net.totalDownloaded)) · ↑ \(Format.bytes(net.totalUploaded))")
             }

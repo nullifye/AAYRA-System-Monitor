@@ -38,6 +38,12 @@ enum Format {
         return value.formatted(.byteCount(style: .decimal, spellsOutZero: false)) + "/s"
     }
 
+    /// Length of a chart's time window: "1 min", "2 min", "90 s".
+    static func span(_ seconds: TimeInterval) -> String {
+        let s = Int(seconds.rounded())
+        return s >= 60 && s % 60 == 0 ? "\(s / 60) min" : "\(s) s"
+    }
+
     static func minutes(_ minutes: Int) -> String {
         let h = minutes / 60, m = minutes % 60
         return h > 0 ? "\(h)h \(m)m" : "\(m)m"

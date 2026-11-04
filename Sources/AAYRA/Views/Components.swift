@@ -381,6 +381,7 @@ struct DetailPopover<Detail: View>: ViewModifier {
 
     @State private var isHovering = false
     @State private var closedAt = Date.distantPast
+    @State private var anchor: NSView?
 
     private var isOpen: Bool { selection == kind }
 
@@ -398,20 +399,130 @@ struct DetailPopover<Detail: View>: ViewModifier {
             }
             .animation(.easeOut(duration: 0.12), value: isHovering)
             .animation(.easeOut(duration: 0.12), value: isOpen)
-            .popover(isPresented: Binding(
-                get: { selection == kind },
-                set: { shown in
-                    if !shown, selection == kind {
-                        selection = nil
-                        closedAt = Date()
+            .background(PopoverAnchor { anchor = $0 })
+            .onChange(of: isOpen) { _, open in
+                if open, let anchor {
+                    DetailPresenter.shared.show(kind, content: AnyView(detail()), from: anchor, edge: edge) {
+                        // Closed by a click elsewhere, Escape or the panel closing.
+                        if selection == kind {
+                            selection = nil
+                            closedAt = Date()
+                        }
                     }
+                } else if !open {
+                    DetailPresenter.shared.close(kind)
                 }
-            ), arrowEdge: edge) {
-                detail()
             }
             .accessibilityAddTraits(.isButton)
             .accessibilityHint("Shows details")
     }
+}
+
+/// Shows detail panels in an AppKit popover beside the floating panel.
+///
+/// SwiftUI's own popover can't be used here: the floating panel keeps keyboard focus (it has to, to
+/// work like a menu bar panel), so the popover window never becomes key, and SwiftUI drops the first
+/// click into a window that isn't key — every tap inside the popover would be lost. This popover's
+/// content view accepts that first click, so rows and buttons respond straight away.
+@MainActor
+final class DetailPresenter: NSObject, NSPopoverDelegate {
+    static let shared = DetailPresenter()
+
+    private var popover: NSPopover?
+    private var kind: DetailKind?
+    private var onClose: (() -> Void)?
+
+    func show(_ kind: DetailKind, content: AnyView, from anchor: NSView, edge: Edge, onClose: @escaping () -> Void) {
+        closeCurrent()
+        let popover = NSPopover()
+        popover.behavior = .transient            // a click anywhere else closes it
+        popover.animates = true
+        popover.delegate = self
+        let controller = DetailContentController(content: content)
+        // When the content grows (rows expanding), re-anchor so the popover moves back on screen.
+        controller.onResize = { [weak popover, weak anchor] in
+            guard let popover, let anchor, popover.isShown else { return }
+            popover.positioningRect = anchor.bounds
+        }
+        popover.contentViewController = controller
+        self.popover = popover
+        self.kind = kind
+        self.onClose = onClose
+        popover.show(relativeTo: anchor.bounds, of: anchor, preferredEdge: edge == .leading ? .minX : .maxX)
+    }
+
+    /// Closes the popover if it's showing `kind`.
+    func close(_ kind: DetailKind) {
+        if self.kind == kind { closeCurrent() }
+    }
+
+    /// Closes whatever is showing (e.g. when the floating panel closes).
+    func closeAll() { closeCurrent() }
+
+    private func closeCurrent() {
+        guard let popover else { return }
+        popover.delegate = nil
+        popover.close()
+        finish()
+    }
+
+    func popoverDidClose(_ notification: Notification) { finish() }
+
+    private func finish() {
+        let callback = onClose
+        popover = nil
+        kind = nil
+        onClose = nil
+        callback?()
+    }
+}
+
+/// Hosts a detail panel and keeps the popover sized to it as it changes (e.g. a row expanding).
+private final class DetailContentController: NSViewController {
+    private let content: AnyView
+    var onResize: (() -> Void)?
+
+    init(content: AnyView) {
+        self.content = content
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    override func loadView() {
+        let sized = content.onGeometryChange(for: CGSize.self, of: { $0.size }) { [weak self] size in
+            guard let self, self.preferredContentSize != size else { return }
+            self.preferredContentSize = size
+            DispatchQueue.main.async { self.onResize?() }   // after the popover has taken the new size
+        }
+        let host = FirstClickHostingView(rootView: AnyView(sized))
+        host.sizingOptions = []
+        view = host
+        preferredContentSize = host.fittingSize
+    }
+}
+
+/// Accepts the click that would otherwise only focus the (never-key) popover window.
+private final class FirstClickHostingView<Content: View>: NSHostingView<Content> {
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+}
+
+/// An invisible AppKit view behind a card, used as the popover's anchor so the arrow points at the
+/// card. It never takes part in hit testing, so it can't intercept clicks meant for the card.
+private struct PopoverAnchor: NSViewRepresentable {
+    let onCreate: (NSView) -> Void
+
+    final class AnchorView: NSView {
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+    }
+
+    func makeNSView(context: Context) -> AnchorView {
+        let view = AnchorView()
+        DispatchQueue.main.async { onCreate(view) }
+        return view
+    }
+
+    func updateNSView(_ nsView: AnchorView, context: Context) {}
 }
 
 extension View {

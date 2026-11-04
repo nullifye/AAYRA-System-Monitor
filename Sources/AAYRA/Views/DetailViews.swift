@@ -29,19 +29,18 @@ struct DetailPanel<Leading: View, Trailing: View>: View {
     private let isSnapshot = false
     #endif
 
-    /// Natural height of the two columns, measured as they lay out.
-    @State private var columnsHeight: CGFloat = 0
-
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             header
-            // The panel normally sizes to its content. Only when that would be taller than the screen
-            // do the columns scroll, below a header that stays in place.
-            if columnsHeight > maxColumnsHeight {
-                ScrollView { columns }
-                    .frame(height: maxColumnsHeight)
+            if isSnapshot {
+                columns   // offscreen screenshots can't draw scroll views
             } else {
-                columns
+                // The columns always sit in one scroll view, so expanding rows never rebuilds them (which
+                // would collapse them again). It takes the content's natural height up to the room on
+                // screen, and only scrolls, below a header that stays put, when the content is taller.
+                ScrollView(.vertical) { columns }
+                    .frame(maxHeight: maxColumnsHeight)
+                    .scrollBounceBehavior(.basedOnSize)
             }
         }
         .padding(16)
@@ -84,7 +83,6 @@ struct DetailPanel<Leading: View, Trailing: View>: View {
             VStack(spacing: 14) { trailing() }
                 .frame(maxWidth: .infinity)
         }
-        .onGeometryChange(for: CGFloat.self, of: { $0.size.height }) { columnsHeight = $0 }
     }
 
     /// Room for the columns on the current screen, after the header, padding and popover frame.
@@ -94,7 +92,8 @@ struct DetailPanel<Leading: View, Trailing: View>: View {
         if override > 0 { return override }
         #endif
         let screenHeight = (NSApp.keyWindow?.screen ?? NSScreen.main)?.visibleFrame.height ?? 800
-        return max(240, screenHeight - 150)
+        // Leave room for the header, padding, the popover's frame and a small margin.
+        return max(240, screenHeight - 170)
     }
 }
 
@@ -182,18 +181,58 @@ struct DetailRow: View {
     }
 }
 
-/// A process name and value with a thin bar showing its share.
+/// An app or process with its value and a thin bar showing its share. When several processes are
+/// added together (an app and its helpers), clicking the row expands it to list them.
 struct ProcessRow: View {
+    struct Member: Identifiable {
+        let id: pid_t
+        let name: String
+        let value: String
+    }
+
     let name: String
     let value: String
     let fraction: Double
     let tint: Color
     /// How many processes are added together under this name (an app and its helpers).
     var count = 1
+    var members: [Member] = []
+
+    /// Expansion is owned by the list, so opening one app closes the others (one at a time).
+    var isExpanded = false
+    var onToggle: () -> Void = {}
+    private static let visibleMembers = 8
+
+    private var isExpandable: Bool { count > 1 && !members.isEmpty }
 
     var body: some View {
-        VStack(spacing: 3) {
+        if isExpandable {
+            Button {
+                withAnimation(.snappy(duration: 0.25)) { onToggle() }
+            } label: {
+                content.contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityValue(isExpanded ? "Expanded" : "Collapsed")
+            .accessibilityHint(isExpanded ? "Hides its processes" : "Shows its \(count) processes")
+        } else {
+            content
+        }
+    }
+
+    private var content: some View {
+        VStack(alignment: .leading, spacing: 3) {
             HStack(spacing: 4) {
+                if isExpandable {
+                    // Disclosure triangle, as in macOS outline views: points right when
+                    // collapsed and turns down when expanded.
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                        .rotationEffect(.degrees(isExpanded ? 90 : 0))
+                        .frame(width: 12)
+                        .accessibilityHidden(true)
+                }
                 Text(name)
                     .lineLimit(1)
                     .truncationMode(.tail)
@@ -203,7 +242,6 @@ struct ProcessRow: View {
                         .foregroundStyle(.secondary)
                         .padding(.horizontal, 5)
                         .background(.quaternary, in: Capsule())
-                        .help("\(count) processes")
                 }
                 Spacer(minLength: 8)
                 Text(value)
@@ -212,11 +250,37 @@ struct ProcessRow: View {
                     .contentTransition(.numericText())
             }
             UsageBar(fraction: max(fraction, 0.01), color: tint, height: 4)
+            if isExpanded {
+                memberList
+                    .padding(.top, 3)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
         }
         .font(.body)
-        .contentShape(Rectangle())
-        .onTapGesture { SystemActions.openActivityMonitor() }
-        .help("Open Activity Monitor")
+    }
+
+    /// The processes inside the group, indented under the app, biggest first.
+    private var memberList: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            ForEach(members.prefix(Self.visibleMembers)) { member in
+                HStack(spacing: 8) {
+                    Text(member.name)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    Spacer(minLength: 8)
+                    Text(member.value)
+                        .monospacedDigit()
+                        .contentTransition(.numericText())
+                }
+            }
+            if members.count > Self.visibleMembers {
+                Text("and \(members.count - Self.visibleMembers) more")
+                    .foregroundStyle(.tertiary)
+            }
+        }
+        .font(.callout)
+        .foregroundStyle(.secondary)
+        .padding(.leading, 14)
     }
 }
 
@@ -238,6 +302,8 @@ private func onOff(_ value: Bool) -> String { value ? "On" : "Off" }
 
 struct CPUDetail: View {
     let monitor: SystemMonitor
+    /// The one app in Top Processes that's expanded, if any.
+    @State private var expandedProcess: String?
 
     var body: some View {
         let cpu = monitor.cpu
@@ -296,7 +362,12 @@ struct CPUDetail: View {
             } else {
                 ForEach(monitor.topCPUProcesses) { process in
                     ProcessRow(name: process.name, value: String(format: "%.1f%%", process.percent),
-                               fraction: process.percent / 100, tint: Palette.cpu, count: process.count)
+                               fraction: process.percent / 100, tint: Palette.cpu, count: process.count,
+                               members: process.members.map {
+                                   .init(id: $0.id, name: $0.name, value: String(format: "%.1f%%", $0.value))
+                               },
+                               isExpanded: expandedProcess == process.id,
+                               onToggle: { expandedProcess = expandedProcess == process.id ? nil : process.id })
                 }
             }
         }
@@ -460,6 +531,8 @@ struct StorageDetail: View {
 // MARK: - Memory
 
 struct MemoryDetail: View {
+    /// The one app in Top Processes that's expanded, if any.
+    @State private var expandedProcess: String?
     let memory: MemoryStats
     let topProcesses: [ProcessMemory]
 
@@ -506,7 +579,12 @@ struct MemoryDetail: View {
                 } else {
                     ForEach(topProcesses) { process in
                         ProcessRow(name: process.name, value: Format.bytes(process.footprint),
-                                   fraction: share(process.footprint), tint: Palette.memory, count: process.count)
+                                   fraction: share(process.footprint), tint: Palette.memory, count: process.count,
+                                   members: process.members.map {
+                                       .init(id: $0.id, name: $0.name, value: Format.bytes(UInt64($0.value)))
+                                   },
+                                   isExpanded: expandedProcess == process.id,
+                                   onToggle: { expandedProcess = expandedProcess == process.id ? nil : process.id })
                     }
                 }
             }

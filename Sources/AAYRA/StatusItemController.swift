@@ -236,6 +236,7 @@ final class StatusItemController: NSObject {
 
     func closePanel() {
         guard panel.isVisible else { return }
+        DetailPresenter.shared.closeAll()
         removeEventMonitors()
         statusItem.button?.highlight(false)
         monitor.panelDidClose()

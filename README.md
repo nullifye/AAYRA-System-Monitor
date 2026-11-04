@@ -69,7 +69,7 @@ The animation frames, sharp (top row) and with motion blur under heavy load (bot
 | Open the dashboard | Click the turbine in the menu bar |
 | Show details | Click any card. Click it again, or anywhere else, to close |
 | Copy an IP address | Click it (it turns bold for a moment) |
-| Open Activity Monitor | Click any process in a CPU or Memory detail panel |
+| See an app's processes | Click an app in Top Processes (CPU or Memory) to expand it |
 | Settings | Gear button in the footer, ⌘, or right-click the turbine |
 | Close | Click outside, press Esc, or click the turbine |
 | Quit | Power button in the footer, ⌘Q, or right-click the turbine |

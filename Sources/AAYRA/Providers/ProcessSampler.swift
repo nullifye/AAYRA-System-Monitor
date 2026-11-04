@@ -1,12 +1,20 @@
 import Darwin
 import Foundation
 
+/// One process inside a group, e.g. "Code Helper (Plugin)" inside Visual Studio Code.
+struct ProcessMember: Equatable, Identifiable {
+    let id: pid_t
+    let name: String
+    let value: Double       // bytes of memory, or % CPU, matching the group it belongs to
+}
+
 /// Memory footprint per app or process (the "Memory" column in Activity Monitor).
 struct ProcessMemory: Equatable, Identifiable {
     let id: String          // grouping key: the app bundle path, or the executable path
     let name: String
     let footprint: UInt64
     var count = 1           // processes added together under this name
+    var members: [ProcessMember] = []   // those processes, largest first
 }
 
 /// CPU usage per app or process, as a percentage of one core (the "% CPU" column in Activity Monitor).
@@ -15,6 +23,7 @@ struct ProcessCPU: Equatable, Identifiable {
     let name: String
     let percent: Double
     var count = 1
+    var members: [ProcessMember] = []   // busiest first
 }
 
 /// Walks the process list once per sample to rank apps and processes by memory and CPU.
@@ -22,8 +31,9 @@ struct ProcessCPU: Equatable, Identifiable {
 /// added together under the app's real name, so a browser with 30 helpers shows as one entry.
 /// Only processes owned by the current user can be inspected (root daemons are skipped by macOS).
 final class ProcessSampler {
-    private struct Entry { let key: String; let footprint: UInt64; let cpuNanos: UInt64 }
-    private struct Identity { let key: String; let name: String }
+    private struct Entry { let key: String; let processName: String; let footprint: UInt64; let cpuNanos: UInt64 }
+    /// `name` is the group's (app's) name; `processName` is this executable's own name.
+    private struct Identity { let key: String; let name: String; let processName: String }
 
     private var previousCPU: [pid_t: UInt64] = [:]
     private var previousTime: UInt64 = 0
@@ -45,14 +55,21 @@ final class ProcessSampler {
 
         var footprints: [String: (bytes: UInt64, processes: Int)] = [:]
         var cpuPercent: [String: Double] = [:]
+        var memoryMembers: [String: [ProcessMember]] = [:]
+        var cpuMembers: [String: [ProcessMember]] = [:]
         var current: [pid_t: UInt64] = [:]
         for (pid, entry) in entries {
             footprints[entry.key, default: (0, 0)].bytes += entry.footprint
             footprints[entry.key, default: (0, 0)].processes += 1
+            memoryMembers[entry.key, default: []]
+                .append(ProcessMember(id: pid, name: entry.processName, value: Double(entry.footprint)))
             current[pid] = entry.cpuNanos
+            var percent = 0.0
             if elapsed > 0, let before = previousCPU[pid], entry.cpuNanos > before {
-                cpuPercent[entry.key, default: 0] += Double(entry.cpuNanos - before) / Double(elapsed) * 100
+                percent = Double(entry.cpuNanos - before) / Double(elapsed) * 100
+                cpuPercent[entry.key, default: 0] += percent
             }
+            cpuMembers[entry.key, default: []].append(ProcessMember(id: pid, name: entry.processName, value: percent))
         }
         previousCPU = current
         previousTime = now
@@ -61,13 +78,15 @@ final class ProcessSampler {
             .sorted { $0.value.bytes > $1.value.bytes }
             .prefix(count)
             .map { ProcessMemory(id: $0.key, name: names[$0.key] ?? $0.key, footprint: $0.value.bytes,
-                                 count: $0.value.processes) }
+                                 count: $0.value.processes,
+                                 members: (memoryMembers[$0.key] ?? []).sorted { $0.value > $1.value }) }
         let cpu = cpuPercent
             .filter { $0.value >= 0.1 }
             .sorted { $0.value > $1.value }
             .prefix(count)
             .map { ProcessCPU(id: $0.key, name: names[$0.key] ?? $0.key, percent: $0.value,
-                              count: footprints[$0.key]?.processes ?? 1) }
+                              count: footprints[$0.key]?.processes ?? 1,
+                              members: (cpuMembers[$0.key] ?? []).sorted { $0.value > $1.value }) }
         return (Array(memory), Array(cpu))
     }
 
@@ -96,7 +115,7 @@ final class ProcessSampler {
                 identity = self.identity(forExecutable: String(cString: pathBuffer))
             } else if proc_name(pid, &nameBuffer, UInt32(nameBuffer.count)) > 0 {
                 let name = String(cString: nameBuffer)
-                identity = Identity(key: "name:" + name, name: name)
+                identity = Identity(key: "name:" + name, name: name, processName: name)
             } else {
                 continue
             }
@@ -105,7 +124,8 @@ final class ProcessSampler {
             // CPU times are reported in mach absolute-time units on Apple Silicon.
             let ticks = info.ri_user_time + info.ri_system_time
             let nanos = ticks &* Self.timebase.numer / Self.timebase.denom
-            result[pid] = Entry(key: identity.key, footprint: info.ri_phys_footprint, cpuNanos: nanos)
+            result[pid] = Entry(key: identity.key, processName: identity.processName,
+                                footprint: info.ri_phys_footprint, cpuNanos: nanos)
         }
         return result
     }
@@ -114,11 +134,12 @@ final class ProcessSampler {
     private func identity(forExecutable path: String) -> Identity {
         if let cached = identities[path] { return cached }
         let identity: Identity
+        let processName = Self.readableName(ofExecutable: path)
         if let range = path.range(of: ".app/") {
             let appPath = String(path[..<range.lowerBound]) + ".app"
-            identity = Identity(key: appPath, name: Self.displayName(ofApp: appPath))
+            identity = Identity(key: appPath, name: Self.displayName(ofApp: appPath), processName: processName)
         } else {
-            identity = Identity(key: path, name: Self.readableName(ofExecutable: path))
+            identity = Identity(key: path, name: processName, processName: processName)
         }
         identities[path] = identity
         return identity

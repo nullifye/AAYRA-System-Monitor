@@ -35,7 +35,7 @@ struct SettingsView: View {
     @AppStorage(AppSettings.Key.temperatureUnit) private var temperatureUnit = AppSettings.TemperatureUnit.system.rawValue
     @AppStorage(AppSettings.Key.fetchPublicIP) private var fetchPublicIP = true
     @AppStorage(AppSettings.Key.showsSection(.cpu)) private var showCPU = true
-    @AppStorage(AppSettings.Key.showsSection(.gpu)) private var showGPU = true
+    @AppStorage(AppSettings.Key.showsSection(.gpu)) private var showGPU = false   // off by default
     @AppStorage(AppSettings.Key.showsSection(.storage)) private var showStorage = true
     @AppStorage(AppSettings.Key.showsSection(.memory)) private var showMemory = true
     @AppStorage(AppSettings.Key.showsSection(.battery)) private var showBattery = true

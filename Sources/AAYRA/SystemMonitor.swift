@@ -127,7 +127,8 @@ final class SystemMonitor {
             smoothedCPU += 0.35 * (sample.total - smoothedCPU)
         }
         if let m = MemoryProvider.sample() { memory = m }
-        if let g = GPUProvider.sample() {
+        // Only read the GPU while its card is turned on.
+        if AppSettings.showsGPU, let g = GPUProvider.sample() {
             gpu = g
             push(&gpuHistory, g.device)
         }

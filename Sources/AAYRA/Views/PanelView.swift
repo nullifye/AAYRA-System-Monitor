@@ -8,7 +8,7 @@ struct PanelView: View {
     var onResize: ((CGSize) -> Void)?
     @State private var openDetail: DetailKind?
     @AppStorage(AppSettings.Key.showsSection(.cpu)) private var showCPU = true
-    @AppStorage(AppSettings.Key.showsSection(.gpu)) private var showGPU = true
+    @AppStorage(AppSettings.Key.showsSection(.gpu)) private var showGPU = false   // off by default
     @AppStorage(AppSettings.Key.showsSection(.storage)) private var showStorage = true
     @AppStorage(AppSettings.Key.showsSection(.memory)) private var showMemory = true
     @AppStorage(AppSettings.Key.showsSection(.battery)) private var showBattery = true

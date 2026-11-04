@@ -41,6 +41,8 @@ enum AppSettings {
     static var animateIcon: Bool { bool(Key.animateIcon, default: true) }
     static var showPercentInMenuBar: Bool { bool(Key.showPercentInMenuBar, default: false) }
     static var showNetworkInMenuBar: Bool { bool(Key.showNetworkInMenuBar, default: false) }
+    /// The GPU card is off unless turned on in Settings → Sections.
+    static var showsGPU: Bool { bool(Key.showsSection(.gpu), default: false) }
     static var shortcut: Shortcut {
         Shortcut(rawValue: defaults.string(forKey: Key.shortcut) ?? "") ?? .optionCommandM
     }

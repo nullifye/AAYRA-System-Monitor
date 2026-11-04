@@ -37,6 +37,23 @@ enum AppSettings {
     }
 }
 
+enum AppInfo {
+    /// Marketing version, e.g. "1.2".
+    static let version: String = {
+        if let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String {
+            return version
+        }
+        #if DEBUG
+        // Unbundled debug runs (e.g. `--render`) read it from the source plist.
+        if let plist = NSDictionary(contentsOfFile: "Resources/Info.plist"),
+           let version = plist["CFBundleShortVersionString"] as? String {
+            return version
+        }
+        #endif
+        return ""
+    }()
+}
+
 extension Notification.Name {
     /// Asks the menu bar controller to close the floating panel (e.g. when Settings opens).
     static let aayraClosePanel = Notification.Name("AAYRAClosePanel")

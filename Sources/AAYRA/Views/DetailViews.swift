@@ -80,11 +80,30 @@ struct DetailRow: View {
     let label: String
     let value: String
     var dot: Color?
+    #if DEBUG
+    /// Shown instead of `value` in screenshots, for personal identifiers (serials, addresses).
+    var placeholder: String?
+    #endif
+    #if DEBUG
+    @Environment(\.isSnapshot) private var isSnapshot
+    #else
+    private let isSnapshot = false   // screenshots are a debug-only feature
+    #endif
 
-    init(_ label: String, _ value: String, dot: Color? = nil) {
+    init(_ label: String, _ value: String, dot: Color? = nil, placeholder: String? = nil) {
         self.label = label
         self.value = value
         self.dot = dot
+        #if DEBUG
+        self.placeholder = placeholder
+        #endif
+    }
+
+    private var shownValue: String {
+        #if DEBUG
+        if isSnapshot, let placeholder { return placeholder }
+        #endif
+        return value
     }
 
     var body: some View {
@@ -97,7 +116,7 @@ struct DetailRow: View {
                 if let dot {
                     Circle().fill(dot).frame(width: 7, height: 7)
                 }
-                Text(value)
+                Text(shownValue)
                     .monospacedDigit()
                     .lineLimit(1)
                     .truncationMode(.middle)
@@ -326,7 +345,7 @@ struct StorageDetail: View {
                     if let capacity = info.capacityBytes { DetailRow("Capacity", Format.diskBytes(capacity)) }
                     if let interconnect = info.interconnect { DetailRow("Interface", interconnect) }
                     if let bsd = info.bsdName { DetailRow("Device", bsd) }
-                    if let serial = info.serial { DetailRow("Serial", serial) }
+                    if let serial = info.serial { DetailRow("Serial", serial, placeholder: "0123456789ABCDEF") }
                     if let firmware = info.firmware { DetailRow("Firmware", firmware) }
                 }
                 DetailSection("Health") {
@@ -479,7 +498,7 @@ struct BatteryDetail: View {
             }
             DetailRow("Assembled by", battery.packManufacturer ?? "Unknown")
             DetailRow("Cells by", battery.manufacturer ?? "Unknown")
-            if let serial = battery.serial { DetailRow("Serial", serial) }
+            if let serial = battery.serial { DetailRow("Serial", serial, placeholder: "F8Y0000000000000A") }
         }
     }
 
@@ -551,7 +570,7 @@ struct NetworkDetail: View {
             if let interface = net.interfaceName {
                 DetailSection("Connection") {
                     DetailRow("Interface", "\(net.interfaceKind) (\(interface))")
-                    if let mac = info.macAddress { DetailRow("MAC address", mac) }
+                    if let mac = info.macAddress { DetailRow("MAC address", mac, placeholder: "a1:b2:c3:d4:e5:f6") }
                     if info.wifi == nil, let speed = info.linkSpeedMbps {
                         DetailRow("Link speed", speed >= 1000 ? "\(speed / 1000) Gbps" : "\(speed) Mbps")
                     }
@@ -564,8 +583,8 @@ struct NetworkDetail: View {
             if net.isConnected {
                 if let wifi = info.wifi {
                     DetailSection("Wi-Fi") {
-                        DetailRow("Network", monitor.wifiName ?? "—")
-                        if let bssid = wifi.bssid { DetailRow("BSSID", bssid) }
+                        DetailRow("Network", monitor.wifiName ?? "—", placeholder: "Home Wi-Fi")
+                        if let bssid = wifi.bssid { DetailRow("BSSID", bssid, placeholder: "0a:1b:2c:3d:4e:5f") }
                         if let standard = wifi.standard { DetailRow("Standard", standard) }
                         if let rssi = wifi.rssi {
                             DetailRow("Signal", "\(rssi) dBm" + (wifi.signalQuality.map { " (\($0))" } ?? ""),
@@ -582,15 +601,15 @@ struct NetworkDetail: View {
                     }
                 }
                 DetailSection("Addresses") {
-                    if let v4 = net.localIPv4 { DetailRow("IPv4", v4) }
+                    if let v4 = net.localIPv4 { DetailRow("IPv4", v4, placeholder: "192.168.1.20") }
                     if let mask = info.subnetMask { DetailRow("Subnet mask", mask) }
-                    if let v6 = net.localIPv6 { DetailRow("IPv6", v6) }
-                    if let router = info.router { DetailRow("Router", router) }
+                    if let v6 = net.localIPv6 { DetailRow("IPv6", v6, placeholder: "2001:db8::20") }
+                    if let router = info.router { DetailRow("Router", router, placeholder: "192.168.1.1") }
                     ForEach(Array(info.dnsServers.enumerated()), id: \.offset) { index, server in
-                        DetailRow(index == 0 ? "DNS" : "", server)
+                        DetailRow(index == 0 ? "DNS" : "", server, placeholder: index == 0 ? "1.1.1.1" : "1.0.0.1")
                     }
-                    if !info.searchDomains.isEmpty { DetailRow("Search domains", info.searchDomains.joined(separator: ", ")) }
-                    DetailRow("Public IP", monitor.publicIP ?? "—")
+                    if !info.searchDomains.isEmpty { DetailRow("Search domains", info.searchDomains.joined(separator: ", "), placeholder: "home") }
+                    DetailRow("Public IP", monitor.publicIP ?? "—", placeholder: "203.0.113.42")
                 }
             } else {
                 DetailSection("Status") { EmptyRow(text: "No active network interface") }

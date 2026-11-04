@@ -227,6 +227,11 @@ private struct NetworkCard: View {
     let monitor: SystemMonitor
     @State private var copiedValue: String?
     @AppStorage(AppSettings.Key.fetchPublicIP) private var fetchPublicIP = true
+    #if DEBUG
+    @Environment(\.isSnapshot) private var isSnapshot
+    #else
+    private let isSnapshot = false   // screenshots are a debug-only feature
+    #endif
 
     var body: some View {
         let net = monitor.network
@@ -236,7 +241,7 @@ private struct NetworkCard: View {
                     .font(.body.weight(.semibold))
                     .lineLimit(1)
                     .truncationMode(.middle)
-                if showsPermissionButton {
+                if showsPermissionButton && !isSnapshot {
                     Button {
                         monitor.requestWiFiNameAccess()
                     } label: {
@@ -257,7 +262,7 @@ private struct NetworkCard: View {
         } details: {
             DualSparkline(download: monitor.downloadHistory, upload: monitor.uploadHistory, height: 22)
             HStack(spacing: 6) {
-                address("Local", net.localIPv4 ?? net.localIPv6)
+                address("Local", isSnapshot ? "192.168.1.20" : net.localIPv4 ?? net.localIPv6)
                 Spacer(minLength: 4)
                 if fetchPublicIP { publicAddress }
             }
@@ -266,7 +271,8 @@ private struct NetworkCard: View {
 
     private var publicAddress: some View {
         HStack(spacing: 2) {
-            address("Public", monitor.publicIP, loading: monitor.isFetchingPublicIP, alignment: .trailing)
+            address("Public", isSnapshot ? "203.0.113.42" : monitor.publicIP,
+                    loading: monitor.isFetchingPublicIP, alignment: .trailing)
             Button {
                 monitor.refreshPublicIP(force: true)
             } label: {
@@ -281,6 +287,7 @@ private struct NetworkCard: View {
     private var title: String {
         let net = monitor.network
         guard net.isConnected else { return "Offline" }
+        if isSnapshot, monitor.wifiName != nil { return "Home Wi-Fi" }
         return monitor.wifiName ?? net.interfaceKind
     }
 
@@ -359,7 +366,7 @@ private struct BevelWordmark: View {
 }
 
 private struct FooterView: View {
-    private let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ""
+    private let version = AppInfo.version
 
     var body: some View {
         HStack(spacing: 6) {

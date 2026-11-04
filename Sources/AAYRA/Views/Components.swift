@@ -74,8 +74,9 @@ struct Card<Header: View, Details: View>: View {
 }
 
 extension EnvironmentValues {
-    /// Off only for offscreen debug renders, which can't draw glass or materials.
-    @Entry var usesGlass = true
+    /// On only for offscreen debug renders (README screenshots): they can't draw glass, materials
+    /// or AppKit controls, and personal identifiers are swapped for placeholders.
+    @Entry var isSnapshot = false
 }
 
 /// Two card surfaces:
@@ -87,17 +88,21 @@ private struct CardBackground: ViewModifier {
     var radius: CGFloat
     var floating: Bool
     @Environment(\.colorScheme) private var scheme
-    @Environment(\.usesGlass) private var usesGlass
+    #if DEBUG
+    @Environment(\.isSnapshot) private var isSnapshot
+    #else
+    private let isSnapshot = false   // screenshots are a debug-only feature
+    #endif
 
     func body(content: Content) -> some View {
         let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
         if floating {
-            if #available(macOS 26, *), usesGlass {
+            if #available(macOS 26, *), !isSnapshot {
                 content.glassEffect(.regular, in: shape)
             } else {
                 content.background {
                     Group {
-                        if usesGlass {
+                        if !isSnapshot {
                             shape.fill(.regularMaterial)
                         } else {
                             shape.fill(Color(nsColor: .windowBackgroundColor))

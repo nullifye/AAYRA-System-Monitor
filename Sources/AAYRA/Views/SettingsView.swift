@@ -39,7 +39,7 @@ struct SettingsView: View {
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
 
     private let hasBattery = BatteryProvider.sample() != nil
-    private let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0"
+    private let version = AppInfo.version
 
     var body: some View {
         Form {

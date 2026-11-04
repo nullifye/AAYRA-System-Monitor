@@ -20,7 +20,10 @@ struct BatteryStats: Equatable {
     /// Battery power flow in watts: positive while charging, negative while discharging.
     var powerWatts: Double?
     var serial: String?
+    /// Maker of the lithium cells inside the pack (from the gauge's manufacturer data), e.g. "ATL".
     var manufacturer: String?
+    /// Company that assembled the pack (from the serial-number prefix), e.g. "Sunwoda".
+    var packManufacturer: String?
     /// Pack manufacture date; `manufactureDateIsEstimate` when derived from operating time.
     var manufactureDate: Date?
     var manufactureDateIsEstimate = false
@@ -142,6 +145,7 @@ enum BatteryProvider {
             s.powerWatts = Double(mV) * Double(mA) / 1_000_000
         }
         s.serial = (lookupAny("Serial") as? String).flatMap { $0.isEmpty ? nil : $0 }
+        s.packManufacturer = s.serial.flatMap(packAssembler)
         s.manufacturer = (lookupAny("ManufacturerData") as? Data ?? lookupAny("MfgData") as? Data)
             .flatMap(cellManufacturer)
 
@@ -187,6 +191,14 @@ enum BatteryProvider {
         guard (1...12).contains(month), (1...31).contains(day), parts.isValidDate,
               let date = parts.date, date <= Date(), year >= 2010 else { return nil }
         return date
+    }
+
+    /// Apple battery serials start with a three-character code for the pack assembler
+    /// (the same source coconutBattery uses). Only well-documented codes are listed.
+    private static func packAssembler(fromSerial serial: String) -> String? {
+        let codes = ["F8Y": "Sunwoda", "F5D": "Sunwoda", "D86": "Desay", "D3H": "Desay",
+                     "C01": "Simplo", "C32": "Simplo"]
+        return codes[String(serial.prefix(3)).uppercased()]
     }
 
     /// The manufacturer data block holds length-prefixed ASCII fields; the last alphabetic one is the cell maker code.

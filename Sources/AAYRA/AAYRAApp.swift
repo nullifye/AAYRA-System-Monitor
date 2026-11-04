@@ -68,7 +68,7 @@ enum AAYRAMain {
                   "computedHealth", b.computedHealth.map { Format.percent($0) } as Any,
                   "condition", b.condition as Any, "adapterW", b.adapterWatts as Any)
             print("Battery+:", "fullCharge", b.fullChargeCapacity_mAh as Any, "watts", b.powerWatts as Any,
-                  "serial", b.serial as Any, "maker", b.manufacturer as Any,
+                  "serial", b.serial as Any, "pack", b.packManufacturer as Any, "cells", b.manufacturer as Any,
                   "made", b.manufactureDate as Any, "estimated", b.manufactureDateIsEstimate,
                   "lowPower", ProcessInfo.processInfo.isLowPowerModeEnabled)
             print("Battery++:", "mV", b.voltage_mV as Any, "mA", b.current_mA as Any, "cells", b.cellVoltages_mV,

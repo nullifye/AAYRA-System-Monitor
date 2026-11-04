@@ -344,7 +344,8 @@ private struct BatteryCard: View {
                          ? "Manufactured: ≈ \(when) (estimated) · Age ≈ \(age)"
                          : "Manufactured: \(when) · Age \(age)")
         }
-        lines.append("Manufacturer: \(battery.manufacturer ?? "Unknown")")
+        lines.append("Pack assembled by: \(battery.packManufacturer ?? "Unknown")")
+        lines.append("Cells made by: \(battery.manufacturer ?? "Unknown")")
         if let serial = battery.serial { lines.append("Serial: \(serial)") }
         if let full = battery.fullChargeCapacity_mAh {
             lines.append("Full charge capacity: \(full) mAh" + (battery.designCapacity_mAh.map { " (design \($0) mAh)" } ?? ""))

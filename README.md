@@ -21,6 +21,23 @@ Native Swift and SwiftUI · Apple Silicon · macOS 15 or later · under 1 MB
 - ⚙️ **Settings.** Launch at Login, icon animation and CPU % in the menu bar, which cards to show, refresh rate (1, 2 or 5 s), temperature unit, and an opt-out for the public IP lookup.
 - 🪶 **Light.** About 2–4 % CPU while idling in the menu bar, and the whole app is under 1 MB.
 
+## Install
+
+1. Download **`AAYRA-<version>.zip`** from the [Releases](../../releases) page, or from the artifacts of the latest [Build](../../actions/workflows/build.yml) run.
+2. Unzip it and drag **AAYRA.app** into **Applications**.
+3. **Take it out of quarantine.** AAYRA is ad-hoc signed, not notarized by Apple, so macOS blocks it when it comes from the internet. You'll see something like *"Apple could not verify 'AAYRA' is free of malware"* or *"AAYRA is damaged and can't be opened"*. Open **Terminal** and run:
+
+   ```bash
+   xattr -dr com.apple.quarantine /Applications/AAYRA.app
+   ```
+
+   This removes the "downloaded from the internet" flag from the app and everything inside it. You only need to do it once per download.
+
+   Prefer not to use Terminal? Try to open AAYRA once, then go to **System Settings → Privacy & Security**, scroll down and click **Open Anyway** next to the AAYRA message.
+4. Open AAYRA. The turbine appears in the menu bar (there's no Dock icon). The first time the panel opens, macOS asks for Location Services access, which it requires before revealing the Wi-Fi name.
+
+If you'd rather not run a downloaded app at all, [build it from source](#build-from-source). It takes about a minute.
+
 ## Screenshots
 
 ### Dashboard
@@ -56,13 +73,16 @@ The animation frames, sharp (top row) and with motion blur under heavy load (bot
 | Close | Click outside, press Esc, or click the turbine |
 | Quit | Power button in the footer, ⌘Q, or right-click the turbine |
 
-## Build and run
+## Build from source
+
+Needs Xcode 26 or later (for the macOS 26 SDK) on an Apple Silicon Mac.
 
 ```bash
+git clone <this repo> && cd AAYRA
 ./build-app.sh --open      # builds AAYRA.app here and launches it
 ```
 
-Move `AAYRA.app` to `/Applications` before turning on Launch at Login. The app icon is drawn in code. To change it, edit `scripts/make-icon.swift` and run `swift scripts/make-icon.swift`.
+An app you build yourself isn't quarantined, so the `xattr` step isn't needed. Move `AAYRA.app` to `/Applications` before turning on Launch at Login. The app icon is drawn in code. To change it, edit `scripts/make-icon.swift` and run `swift scripts/make-icon.swift`.
 
 ### Debug helpers
 
@@ -76,6 +96,17 @@ BIN="$(swift build --show-bin-path)/AAYRA"
 ```
 
 `AAYRA.app/Contents/MacOS/AAYRA --show-panel` launches the release app with the panel open.
+
+## Continuous integration
+
+GitHub Actions ([`.github/workflows/build.yml`](.github/workflows/build.yml)) builds the app on a macOS 26 runner for every push and pull request:
+
+- Builds the release app with `./build-app.sh`, reports its size in the run summary, and keeps `AAYRA-<version>.zip` as a downloadable artifact.
+- **Releases:** set the version in `Resources/Info.plist`, commit, then push a matching tag. The build checks that the tag matches the version, then publishes a GitHub Release with the zip attached.
+
+  ```bash
+  git tag -a v1.3 -m "AAYRA 1.3" && git push origin v1.3
+  ```
 
 ## Privacy and notes
 

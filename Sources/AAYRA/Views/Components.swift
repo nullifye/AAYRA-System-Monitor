@@ -367,30 +367,6 @@ struct DualSparkline: View {
     }
 }
 
-/// Row of tiny vertical bars, one per CPU core.
-struct CoreBars: View {
-    let loads: [Double]
-    var tint: Color = Palette.cpu
-    var height: CGFloat = 12
-    var barWidth: CGFloat = 5
-
-    var body: some View {
-        HStack(alignment: .bottom, spacing: 2) {
-            ForEach(Array(loads.enumerated()), id: \.offset) { _, load in
-                ZStack(alignment: .bottom) {
-                    RoundedRectangle(cornerRadius: 1.5, style: .continuous).fill(.quaternary)
-                    RoundedRectangle(cornerRadius: 1.5, style: .continuous)
-                        .fill((load > 0.9 ? Color.red : load > 0.7 ? Color.orange : tint).gradient)
-                        .frame(height: max(1.5, height * min(load, 1)))
-                }
-                .frame(width: barWidth, height: height)
-            }
-        }
-        .animation(.smooth(duration: 0.4), value: loads)
-        .accessibilityHidden(true)
-    }
-}
-
 /// Makes a card clickable: it highlights on hover and presents its detail panel
 /// in a popover beside the main panel.
 /// Clicking anywhere outside the popover closes it.

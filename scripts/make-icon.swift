@@ -120,9 +120,19 @@ try? fm.removeItem(at: iconset)
 try fm.createDirectory(at: iconset, withIntermediateDirectories: true)
 // 16–256 pt at 1x and 2x (largest bitmap 512 px). The 512 pt / 1024 px entries are left out:
 // they only matter for the biggest Finder previews and would double the file size.
-for base in [16, 32, 128, 256] {
-    try png(size: base).write(to: iconset.appendingPathComponent("icon_\(base)x\(base).png"))
-    try png(size: base * 2).write(to: iconset.appendingPathComponent("icon_\(base)x\(base)@2x.png"))
+// Each pixel size is stored once: 16 pt @2x is the same 32 px image as 32 pt @1x, and 128 pt @2x
+// the same 256 px image as 256 pt @1x, so those two entries are skipped. macOS picks icon images
+// by pixel size, so nothing looks different, and the file is about 65 KB smaller.
+let entries: [(name: String, pixels: Int)] = [
+    ("icon_16x16.png", 16),
+    ("icon_32x32.png", 32),
+    ("icon_32x32@2x.png", 64),
+    ("icon_128x128.png", 128),
+    ("icon_256x256.png", 256),
+    ("icon_256x256@2x.png", 512),
+]
+for entry in entries {
+    try png(size: entry.pixels).write(to: iconset.appendingPathComponent(entry.name))
 }
 try png(size: 1024).write(to: URL(fileURLWithPath: "Resources/AppIcon.png"))
 

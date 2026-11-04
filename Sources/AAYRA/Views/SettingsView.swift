@@ -16,6 +16,7 @@ enum SettingsWindow {
             window.title = "AAYRA Settings"
             window.styleMask = [.titled, .closable]
             window.isReleasedWhenClosed = false
+            window.setContentSize(host.view.fittingSize)   // size first, so centring uses the real height
             window.center()
             self.window = window
         }
@@ -119,9 +120,31 @@ struct SettingsView: View {
                 Text("When on, AAYRA asks api.ipify.org for your public address when the panel opens.")
                     .foregroundStyle(.secondary)
             }
+
+            Section("About") {
+                HStack {
+                    Text("Author")
+                    Spacer()
+                    Text(AppInfo.author).foregroundStyle(.secondary)
+                }
+                linkRow("Source code", symbol: "chevron.left.forwardslash.chevron.right", color: .gray,
+                        text: "github.com/nullifye", url: AppInfo.repositoryURL)
+                linkRow("Telegram", symbol: "paperplane.fill", color: .blue,
+                        text: "t.me/mohdrafhan", url: AppInfo.authorTelegramURL)
+            }
         }
         .formStyle(.grouped)
-        .frame(width: 460, height: 640)
+        .frame(width: 460, height: 700)
+    }
+
+    /// A label with a small icon on the left and a clickable link on the right.
+    private func linkRow(_ title: String, symbol: String, color: Color, text: String, url: URL) -> some View {
+        HStack(spacing: 8) {
+            IconBadge(symbol: symbol, color: color, size: 22)
+            Text(title)
+            Spacer(minLength: 8)
+            Link(text + " ↗", destination: url)
+        }
     }
 
     private func sectionToggle(_ title: String, symbol: String, color: Color, isOn: Binding<Bool>) -> some View {

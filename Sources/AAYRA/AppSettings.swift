@@ -38,6 +38,10 @@ enum AppSettings {
 }
 
 enum AppInfo {
+    static let author = "RFHN"
+    static let repositoryURL = URL(string: "https://github.com/nullifye/AAYRA-System-Monitor")!
+    static let authorTelegramURL = URL(string: "https://t.me/mohdrafhan")!
+
     /// Marketing version, e.g. "1.2".
     static let version: String = {
         if let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String {

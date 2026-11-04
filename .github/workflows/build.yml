@@ -1,0 +1,80 @@
+# Builds AAYRA.app on every push and pull request and keeps the zipped app as a build artifact.
+# Pushing a version tag (e.g. v1.3) also publishes a GitHub Release with the zip attached.
+name: Build
+
+on:
+  push:
+    branches: [master, main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write   # lets the tag build create the GitHub Release
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    # The Liquid Glass APIs need the macOS 26 SDK (Xcode 26), which this Apple Silicon image provides.
+    runs-on: macos-26
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show toolchain
+        run: |
+          xcodebuild -version
+          swift --version
+
+      - name: Read version
+        id: version
+        run: |
+          version=$(/usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" Resources/Info.plist)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "Building AAYRA $version"
+
+      - name: Check tag matches the app version
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          if [ "${GITHUB_REF_NAME#v}" != "${{ steps.version.outputs.version }}" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match CFBundleShortVersionString ${{ steps.version.outputs.version }} in Resources/Info.plist"
+            exit 1
+          fi
+
+      - name: Build AAYRA.app
+        run: ./build-app.sh
+
+      - name: Report app size
+        run: |
+          bytes=$(find AAYRA.app -type f -exec stat -f %z {} + | awk '{ total += $1 } END { print total }')
+          echo "AAYRA.app is $bytes bytes"
+          echo "**AAYRA ${{ steps.version.outputs.version }}**: $bytes bytes" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Zip the app
+        id: package
+        run: |
+          zip="AAYRA-${{ steps.version.outputs.version }}.zip"
+          # ditto keeps the code signature and executable permissions intact.
+          ditto -c -k --keepParent AAYRA.app "$zip"
+          echo "zip=$zip" >> "$GITHUB_OUTPUT"
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: AAYRA-${{ steps.version.outputs.version }}
+          path: ${{ steps.package.outputs.zip }}
+          if-no-files-found: error
+
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" "${{ steps.package.outputs.zip }}" \
+            --title "AAYRA ${{ steps.version.outputs.version }}" \
+            --generate-notes \
+            --verify-tag

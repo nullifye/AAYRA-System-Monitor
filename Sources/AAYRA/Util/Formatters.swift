@@ -55,6 +55,19 @@ enum Format {
         return s >= 60 && s % 60 == 0 ? "\(s / 60) min" : "\(s) s"
     }
 
+    /// Large counts in short form: "1.6M", "868K", "5.9K".
+    static func compactCount<T: BinaryInteger>(_ n: T) -> String {
+        Int64(clamping: n).formatted(.number.notation(.compactName))
+    }
+
+    /// Millivolts as volts: 12460 → "12.46 V".
+    static func volts(_ millivolts: Int) -> String { String(format: "%.2f V", Double(millivolts) / 1000) }
+
+    /// Milliamps as amps, ignoring direction: -990 → "0.99 A".
+    static func amps(_ milliamps: Int) -> String { String(format: "%.2f A", Double(abs(milliamps)) / 1000) }
+
+    static func onOff(_ value: Bool) -> String { value ? "On" : "Off" }
+
     static func minutes(_ minutes: Int) -> String {
         let h = minutes / 60, m = minutes % 60
         return h > 0 ? "\(h)h \(m)m" : "\(m)m"

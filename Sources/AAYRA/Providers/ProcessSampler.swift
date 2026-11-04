@@ -153,7 +153,7 @@ final class ProcessSampler {
 
     /// The executable's file name, except when that's just a version number
     /// (e.g. ".../claude/versions/2.1.318"): then the nearest meaningful folder name is used.
-    private static func readableName(ofExecutable path: String) -> String {
+    static func readableName(ofExecutable path: String) -> String {
         let parts = path.split(separator: "/").map(String.init)
         guard let last = parts.last else { return path }
         guard isVersionLike(last) else { return last }
@@ -164,7 +164,7 @@ final class ProcessSampler {
         return last
     }
 
-    private static func isVersionLike(_ name: String) -> Bool {
+    static func isVersionLike(_ name: String) -> Bool {
         !name.isEmpty && name.allSatisfy { $0.isNumber || $0 == "." }
     }
 }

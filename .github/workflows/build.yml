@@ -45,6 +45,11 @@ jobs:
             exit 1
           fi
 
+      - name: Run unit tests
+        # Parsers and formatters (battery date decoding, pack-maker lookup, number formats, version
+        # comparison…). A failing test stops the build, so a broken release is never published.
+        run: swift test --parallel
+
       - name: Build AAYRA.app
         run: ./build-app.sh
 

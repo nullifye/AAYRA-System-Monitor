@@ -99,10 +99,36 @@ BIN="$(swift build --show-bin-path)/AAYRA"
 
 `AAYRA.app/Contents/MacOS/AAYRA --show-panel` launches the release app with the panel open.
 
+### Tests
+
+```bash
+swift test
+```
+
+The tests in `Tests/AAYRATests` cover the parts that turn raw system data into what you see:
+- battery manufacture-date decoding, pack-assembler lookup and cell-maker parsing;
+- size, rate and time formats;
+- version comparison for the update check;
+- process naming, Wi-Fi signal quality and keyboard-shortcut choices.
+
+They use Swift Testing and finish in under a second.
+
+### Project layout
+
+| Folder | What's there |
+|---|---|
+| `Sources/AAYRA/Providers` | Reading the system: CPU, GPU, memory, disks, volumes, battery, network, processes |
+| `Sources/AAYRA/Views/Sections` | One file per section (CPU, GPU, Storage, Memory, Battery, Network), each with its card and its detail panel |
+| `Sources/AAYRA/Views/Panel` | The floating panel and its header and footer |
+| `Sources/AAYRA/Views/Detail` | Building blocks shared by all detail panels |
+| `Sources/AAYRA/Views` | Shared components, Settings, the turbine frames |
+| `Sources/CNVMe` | Small C helper for NVMe SMART data |
+
 ## Continuous integration
 
 GitHub Actions ([`.github/workflows/build.yml`](.github/workflows/build.yml)) builds the app on a macOS 26 runner for every push and pull request:
 
+- Runs the unit tests first. If any fail, nothing is built or released.
 - Builds the release app with `./build-app.sh`, reports its size in the run summary, and keeps `AAYRA-<version>.zip` as a downloadable artifact.
 - **Releases:** set the version in `Resources/Info.plist`, commit, then push a matching tag. The build checks that the tag matches the version, then publishes a GitHub Release with the zip attached.
 

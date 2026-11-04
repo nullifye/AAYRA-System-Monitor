@@ -21,6 +21,12 @@ let package = Package(
                 .linkedFramework("DiskArbitration"),   // how external drives are connected (USB, Thunderbolt…)
                 .linkedFramework("Carbon"),            // global keyboard shortcut (RegisterEventHotKey)
             ]
+        ),
+        // Unit tests for the parsers and formatters (`swift test`); run by CI on every push.
+        .testTarget(
+            name: "AAYRATests",
+            dependencies: ["AAYRA"],
+            path: "Tests/AAYRATests"
         )
     ],
     swiftLanguageModes: [.v5]

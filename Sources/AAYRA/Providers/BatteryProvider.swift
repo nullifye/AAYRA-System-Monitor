@@ -181,7 +181,7 @@ enum BatteryProvider {
 
     /// Apple Silicon packs store the date as six ASCII digits, little-endian, laid out DDMMYY
     /// (e.g. 0x333230313133 → "311023" → 31 Oct 2023). Not every pack follows it, so validate.
-    private static func decodeManufactureDate(_ value: UInt64) -> Date? {
+    static func decodeManufactureDate(_ value: UInt64) -> Date? {
         let bytes = (0..<6).map { UInt8((value >> (8 * UInt64($0))) & 0xFF) }
         guard bytes.allSatisfy({ (0x30...0x39).contains($0) }) else { return nil }
         let digits = bytes.map { Int($0) - 0x30 }
@@ -195,14 +195,14 @@ enum BatteryProvider {
 
     /// Apple battery serials start with a three-character code for the pack assembler
     /// (the same source coconutBattery uses). Only well-documented codes are listed.
-    private static func packAssembler(fromSerial serial: String) -> String? {
+    static func packAssembler(fromSerial serial: String) -> String? {
         let codes = ["F8Y": "Sunwoda", "F5D": "Sunwoda", "D86": "Desay", "D3H": "Desay",
                      "C01": "Simplo", "C32": "Simplo"]
         return codes[String(serial.prefix(3)).uppercased()]
     }
 
     /// The manufacturer data block holds length-prefixed ASCII fields; the last alphabetic one is the cell maker code.
-    private static func cellManufacturer(from data: Data) -> String? {
+    static func cellManufacturer(from data: Data) -> String? {
         let bytes = [UInt8](data)
         var fields: [String] = []
         var i = 0

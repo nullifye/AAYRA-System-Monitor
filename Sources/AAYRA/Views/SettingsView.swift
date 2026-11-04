@@ -5,23 +5,29 @@ import SwiftUI
 /// The Settings window, opened from the gear button or the menu bar icon's right-click menu.
 @MainActor
 enum SettingsWindow {
-    private static var window: NSWindow?
+    private static var window: NSPanel?
 
+    /// Settings is a non-activating panel, like the floating panel: it comes to the front and takes
+    /// keyboard input without activating AAYRA. (On current macOS an app can't force itself active,
+    /// and a normal window opened from the floating panel would appear behind the app you're using.)
     static func show() {
         NotificationCenter.default.post(name: .aayraClosePanel, object: nil)
         if window == nil {
             let host = NSHostingController(rootView: SettingsView())
             host.sizingOptions = [.preferredContentSize]
-            let window = NSWindow(contentViewController: host)
-            window.title = "AAYRA Settings"
-            window.styleMask = [.titled, .closable]
-            window.isReleasedWhenClosed = false
-            window.setContentSize(host.view.fittingSize)   // size first, so centring uses the real height
-            window.center()
-            self.window = window
+            let panel = NSPanel(contentRect: .zero, styleMask: [.titled, .closable, .nonactivatingPanel],
+                                backing: .buffered, defer: true)
+            panel.contentViewController = host
+            panel.title = "AAYRA Settings"
+            panel.isReleasedWhenClosed = false
+            panel.hidesOnDeactivate = false          // panels hide when their app deactivates by default
+            panel.becomesKeyOnlyIfNeeded = false
+            panel.setContentSize(host.view.fittingSize)   // size first, so centring uses the real height
+            panel.center()
+            window = panel
         }
-        NSApp.activate(ignoringOtherApps: true)
-        window?.makeKeyAndOrderFront(nil)
+        window?.orderFrontRegardless()                 // in front of the app you're using
+        window?.makeKey()
     }
 }
 

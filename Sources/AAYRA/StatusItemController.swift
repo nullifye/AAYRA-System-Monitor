@@ -77,6 +77,11 @@ final class StatusItemController: NSObject {
 
         NotificationCenter.default.addObserver(self, selector: #selector(appDidResignActive),
                                                name: NSApplication.didResignActiveNotification, object: nil)
+        // AAYRA usually isn't the active app while the panel is open, so also close it when you
+        // switch to another app (⌘-Tab, Dock, Mission Control).
+        NSWorkspace.shared.notificationCenter.addObserver(self, selector: #selector(otherAppActivated(_:)),
+                                                          name: NSWorkspace.didActivateApplicationNotification,
+                                                          object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(appDidResignActive),
                                                name: .aayraClosePanel, object: nil)
         hotKey = GlobalHotKey { [weak self] in
@@ -246,8 +251,9 @@ final class StatusItemController: NSObject {
         placePanel(size: host.fittingSize)
 
         button.highlight(true)
-        NSApp.activate(ignoringOtherApps: true)
         panel.alphaValue = 0
+        // No app activation needed: a non-activating panel takes keyboard focus (Escape, ⌘Q, ⌘,)
+        // while the app you were using stays active, the way Spotlight's panel works.
         panel.makeKeyAndOrderFront(nil)
         NSAnimationContext.runAnimationGroup { context in
             context.duration = 0.15
@@ -331,6 +337,11 @@ final class StatusItemController: NSObject {
     }
 
     @objc private func appDidResignActive() { closePanel() }
+
+    @objc private func otherAppActivated(_ notification: Notification) {
+        let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
+        if app?.processIdentifier != ProcessInfo.processInfo.processIdentifier { closePanel() }
+    }
 
     /// Detail panels open beside the main panel, on the side with room for them.
     private func detailEdge(for button: NSStatusBarButton) -> Edge {

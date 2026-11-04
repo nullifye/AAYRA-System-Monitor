@@ -37,6 +37,14 @@ enum AAYRAMain {
         if let d = DiskProvider.sample() {
             print("Disk:", d.volumeName, Format.diskBytes(d.available), "free of", Format.diskBytes(d.total))
         }
+        if let ssd = SSDHealthProvider.sample() {
+            print("SSD:", "health", Format.percent(ssd.health), "temp", ssd.temperatureC as Any,
+                  "written", Format.diskBytes(Int64(clamping: ssd.bytesWritten)),
+                  "read", Format.diskBytes(Int64(clamping: ssd.bytesRead)),
+                  "powerOnHours", ssd.powerOnHours, "spare", ssd.availableSpare, "condition", ssd.condition)
+        } else {
+            print("SSD: SMART data unavailable")
+        }
         if let b = BatteryProvider.sample() {
             print("Battery:", Format.percent(b.charge), b.state, "toEmpty", b.minutesToEmpty as Any,
                   "toFull", b.minutesToFull as Any, "cycles", b.cycleCount as Any, "/", b.designCycles as Any,

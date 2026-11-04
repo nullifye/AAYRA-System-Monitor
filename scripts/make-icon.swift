@@ -118,7 +118,9 @@ let fm = FileManager.default
 let iconset = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("AppIcon.iconset")
 try? fm.removeItem(at: iconset)
 try fm.createDirectory(at: iconset, withIntermediateDirectories: true)
-for base in [16, 32, 128, 256, 512] {
+// 16–256 pt at 1x and 2x (largest bitmap 512 px). The 512 pt / 1024 px entries are left out:
+// they only matter for the biggest Finder previews and would double the file size.
+for base in [16, 32, 128, 256] {
     try png(size: base).write(to: iconset.appendingPathComponent("icon_\(base)x\(base).png"))
     try png(size: base * 2).write(to: iconset.appendingPathComponent("icon_\(base)x\(base)@2x.png"))
 }

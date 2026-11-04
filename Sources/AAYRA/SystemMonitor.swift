@@ -14,6 +14,7 @@ final class SystemMonitor {
 
     private(set) var memory = MemoryStats()
     private(set) var disk = DiskStats()
+    private(set) var ssd: SSDHealth?
     private(set) var battery: BatteryStats?
     private(set) var network = NetworkStats()
     private(set) var downloadHistory: [Double] = Array(repeating: 0, count: historyLength)
@@ -43,6 +44,7 @@ final class SystemMonitor {
         _ = cpuProvider.sample()            // prime the tick baseline
         _ = networkProvider.sample()
         refreshSlowMetrics()
+        ssd = SSDHealthProvider.sample()
         Task { await refreshReportedHealth() }
         wifiProvider.onAuthorizationChange = { [weak self] in self?.refreshWiFiName() }
     }
@@ -77,6 +79,7 @@ final class SystemMonitor {
         }
 
         if tickCount % 10 == 0 { refreshSlowMetrics() }
+        if tickCount % 60 == 0 { ssd = SSDHealthProvider.sample() }             // SMART changes slowly
         if tickCount % 1800 == 0 { Task { await refreshReportedHealth() } }      // every 30 min
     }
 
@@ -115,6 +118,7 @@ final class SystemMonitor {
     /// Called when the panel opens: refresh slow values right away and fetch the public IP if stale.
     func panelDidOpen() {
         refreshSlowMetrics()
+        ssd = SSDHealthProvider.sample()
         if network.interfaceKind == "Wi-Fi" { wifiProvider.requestAccessIfNeeded() }
         refreshPublicIP(force: false)
     }

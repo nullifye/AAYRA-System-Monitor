@@ -13,6 +13,17 @@ enum Format {
         value.formatted(.byteCount(style: .file, spellsOutZero: false))
     }
 
+    /// Short disk size for tight rows: "204 GB", "2.7 GB", "1.2 TB" (decimal units, like Finder).
+    static func diskShort(_ value: Int64) -> String {
+        let units: [(Double, String)] = [(1e12, "TB"), (1e9, "GB"), (1e6, "MB"), (1e3, "KB")]
+        let v = Double(max(0, value))
+        for (scale, unit) in units where v >= scale {
+            let n = v / scale
+            return (n >= 100 ? String(format: "%.0f", n) : String(format: "%.1f", n)) + " " + unit
+        }
+        return "\(Int(v)) B"
+    }
+
     static func rate(_ bytesPerSecond: Double) -> String {
         let value = Int64(max(0, bytesPerSecond))
         return value.formatted(.byteCount(style: .decimal, spellsOutZero: false)) + "/s"

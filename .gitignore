@@ -1,3 +1,4 @@
 .build/
 AAYRA.app/
 .DS_Store
+.vscode

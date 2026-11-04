@@ -8,7 +8,7 @@ struct PanelView: View {
         VStack(spacing: 6) {
             HeaderView(monitor: monitor)
             CPUCard(monitor: monitor)
-            StorageCard(disk: monitor.disk)
+            StorageCard(disk: monitor.disk, ssd: monitor.ssd)
             MemoryCard(memory: monitor.memory)
             if let battery = monitor.battery {
                 BatteryCard(battery: battery)
@@ -79,19 +79,54 @@ private struct CPUCard: View {
 
 private struct StorageCard: View {
     let disk: DiskStats
+    let ssd: SSDHealth?
 
     var body: some View {
         Card(symbol: "internaldrive.fill", tint: Palette.storage) {
             MeterHeader(title: "Storage", value: "\(Format.diskBytes(disk.available)) free") {
-                UsageBar(fraction: disk.usedFraction, warning: 0.9, critical: 0.95, tint: Palette.storage)
+                StackedBar(segments: [
+                    .init(value: share(disk.used), color: Palette.storage),
+                    .init(value: share(disk.purgeable), color: Palette.storagePurgeable),
+                ])
             }
         } details: {
-            HStack(spacing: 10) {
-                Text(disk.volumeName)
-                Spacer(minLength: 0)
-                Stat(label: "Used", value: "\(Format.diskBytes(disk.used)) of \(Format.diskBytes(disk.total))")
+            // Two rows in three equal, left-aligned columns (same grid as Memory).
+            Grid(alignment: .leading, horizontalSpacing: 8, verticalSpacing: 5) {
+                GridRow {
+                    column(Stat(label: "Used", value: Format.diskShort(disk.used), dot: Palette.storage))
+                    column(Stat(label: "Purge.", value: Format.diskShort(disk.purgeable), dot: Palette.storagePurgeable))
+                    column(Stat(label: "Total", value: Format.diskShort(disk.total)))
+                }
+                if let ssd {
+                    GridRow {
+                        column(Stat(label: "Health", value: Format.percent(ssd.health), dot: healthColor(ssd)))
+                        column(Stat(label: "Temp", value: ssd.temperatureC.map(Format.temperature) ?? "—"))
+                        column(Stat(label: "Written", value: Format.diskShort(Int64(clamping: ssd.bytesWritten))))
+                    }
+                }
             }
         }
+        .help(tooltip)
+    }
+
+    private func column(_ stat: Stat) -> some View {
+        stat.frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func healthColor(_ ssd: SSDHealth) -> Color {
+        if ssd.condition == "Check Drive" { return .red }
+        return ssd.health >= 0.8 ? .green : ssd.health >= 0.5 ? .orange : .red
+    }
+
+    private var tooltip: String {
+        guard let ssd else { return disk.volumeName }
+        let read = Format.diskShort(Int64(clamping: ssd.bytesRead))
+        return "\(disk.volumeName) · SSD \(ssd.condition)\n"
+            + "Read \(read) · Power-on \(ssd.powerOnHours) h · Spare \(ssd.availableSpare)%"
+    }
+
+    private func share(_ bytes: Int64) -> Double {
+        disk.total > 0 ? Double(bytes) / Double(disk.total) : 0
     }
 }
 
@@ -103,18 +138,23 @@ private struct MemoryCard: View {
     var body: some View {
         Card(symbol: "memorychip", tint: Palette.memory) {
             MeterHeader(title: "Memory", value: "\(Format.bytes(memory.used)) / \(Format.bytes(memory.total))") {
-                UsageBar(fraction: memory.usedFraction, color: barColor)
+                StackedBar(segments: [
+                    .init(value: share(memory.app), color: Palette.memory),
+                    .init(value: share(memory.wired), color: Palette.memoryWired),
+                    .init(value: share(memory.compressed), color: Palette.memoryCompressed),
+                    .init(value: share(memory.cached), color: Palette.memoryCached),
+                ])
             }
         } details: {
             // Two rows in three equal, left-aligned columns.
             Grid(alignment: .leading, horizontalSpacing: 8, verticalSpacing: 5) {
                 GridRow {
-                    column(Stat(label: "App", value: Format.bytes(memory.app)))
-                    column(Stat(label: "Wired", value: Format.bytes(memory.wired)))
-                    column(Stat(label: "Compr.", value: Format.bytes(memory.compressed)))
+                    column(Stat(label: "App", value: Format.bytes(memory.app), dot: Palette.memory))
+                    column(Stat(label: "Wired", value: Format.bytes(memory.wired), dot: Palette.memoryWired))
+                    column(Stat(label: "Compr.", value: Format.bytes(memory.compressed), dot: Palette.memoryCompressed))
                 }
                 GridRow {
-                    column(Stat(label: "Cached", value: Format.bytes(memory.cached)))
+                    column(Stat(label: "Cached", value: Format.bytes(memory.cached), dot: Palette.memoryCached))
                     column(Stat(label: "Swap", value: Format.bytes(memory.swapUsed)))
                     column(Stat(label: "", value: pressureText, dot: pressureColor))
                 }
@@ -122,13 +162,8 @@ private struct MemoryCard: View {
         }
     }
 
-    /// Section colour normally; follows memory pressure when the system is under strain.
-    private var barColor: Color {
-        switch memory.pressure {
-        case .normal: Palette.memory
-        case .warning: .orange
-        case .critical: .red
-        }
+    private func share(_ bytes: UInt64) -> Double {
+        memory.total > 0 ? Double(bytes) / Double(memory.total) : 0
     }
 
     private func column(_ stat: Stat) -> some View {
@@ -160,7 +195,12 @@ private struct BatteryCard: View {
     var body: some View {
         Card(symbol: symbol, tint: tint) {
             MeterHeader(title: "Battery", value: Format.percent(battery.charge)) {
-                UsageBar(fraction: battery.charge, color: tint)
+                StackedBar(segments: [
+                    .init(value: battery.charge * maxCapacity, color: tint),
+                    .init(value: (1 - battery.charge) * maxCapacity, color: .clear),
+                    .init(value: 1 - maxCapacity, color: Palette.batteryWorn),
+                ])
+                .help("Bar length is the original design capacity; the grey end is capacity lost to wear.")
             }
         } details: {
             HStack(spacing: 10) {
@@ -170,7 +210,8 @@ private struct BatteryCard: View {
                 Stat(label: "Temp", value: battery.temperatureC.map(Format.temperature) ?? "—")
             }
             HStack(spacing: 10) {
-                Stat(label: "Max Capacity", value: battery.health.map { Format.percent($0) } ?? "—")
+                Stat(label: "Max Capacity", value: battery.health.map { Format.percent($0) } ?? "—", dot: tint)
+                Stat(label: "Worn", value: Format.percent(1 - maxCapacity), dot: Palette.batteryWorn)
                 Spacer(minLength: 0)
                 Stat(label: "Condition", value: battery.condition ?? "—", dot: conditionColor)
             }
@@ -181,6 +222,8 @@ private struct BatteryCard: View {
             }
         }
     }
+
+    private var maxCapacity: Double { min(max(battery.health ?? 1, 0), 1) }
 
     private var symbol: String {
         if battery.state == .charging || battery.state == .charged { return "battery.100percent.bolt" }
@@ -195,7 +238,7 @@ private struct BatteryCard: View {
 
     private var tint: Color {
         if battery.isPluggedIn { return Palette.battery }
-        return battery.charge <= 0.1 ? .red : battery.charge <= 0.2 ? .orange : Palette.battery
+        return battery.charge <= 0.2 ? .orange : Palette.battery   // never red: low battery isn't a fault
     }
 
     /// State and time in one short phrase, e.g. "6h 35m left" or "Charging · 1h 10m".

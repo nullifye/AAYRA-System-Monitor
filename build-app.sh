@@ -11,6 +11,7 @@ BIN="$(swift build -c release --arch arm64 --show-bin-path)/AAYRA"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/AAYRA"
+strip -x "$APP/Contents/MacOS/AAYRA"     # drop debug symbols (roughly halves the binary)
 cp Resources/Info.plist "$APP/Contents/Info.plist"
 cp Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 codesign --force --sign - "$APP"

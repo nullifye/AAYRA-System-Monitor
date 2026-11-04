@@ -11,6 +11,13 @@ enum Palette {
     static let network = Color.teal
     static let download = Color.blue
     static let upload = Color.orange
+
+    // Stacked-bar segments
+    static let storagePurgeable = Color.purple.opacity(0.4)
+    static let memoryWired = Color.orange
+    static let memoryCompressed = Color.yellow
+    static let memoryCached = Color.gray.opacity(0.55)
+    static let batteryWorn = Color.gray.opacity(0.5)
 }
 
 /// Shared sizes for the compact layout, so every card lines up.
@@ -106,6 +113,60 @@ struct Stat: View {
                 .contentTransition(.numericText())
         }
         .fixedSize()
+    }
+}
+
+/// Capsule bar split into coloured parts (fractions of the whole, left to right).
+/// Whatever is left over shows as the empty track.
+struct StackedBar: View {
+    struct Segment {
+        let value: Double
+        let color: Color
+    }
+
+    let segments: [Segment]
+    var height: CGFloat = 6
+    var gap: CGFloat = 1
+
+    @Environment(\.displayScale) private var displayScale
+
+    /// Rounds to the nearest device pixel so every gap renders exactly the same width.
+    private func snap(_ x: CGFloat) -> CGFloat { (x * displayScale).rounded() / displayScale }
+
+    /// Left/right edges of each segment, pixel-aligned, with one uniform gap after each part.
+    private func frames(width: CGFloat) -> [(x: CGFloat, width: CGFloat)] {
+        var result: [(CGFloat, CGFloat)] = []
+        var cumulative = 0.0
+        for segment in segments {
+            let value = max(0, min(segment.value, 1 - cumulative))
+            let left = snap(CGFloat(cumulative) * width)
+            cumulative += value
+            let right = snap(CGFloat(cumulative) * width)
+            let w = right - left - gap
+            result.append((left, value > 0 && w >= 1 / displayScale ? w : 0))
+        }
+        return result
+    }
+
+    var body: some View {
+        GeometryReader { geo in
+            let rects = frames(width: geo.size.width)
+            ZStack(alignment: .leading) {
+                ForEach(segments.indices, id: \.self) { i in
+                    Rectangle()
+                        .fill(segments[i].color)
+                        .frame(width: rects[i].width, height: height)
+                        .offset(x: rects[i].x)
+                }
+            }
+            .frame(width: geo.size.width, height: height, alignment: .leading)
+        }
+        .frame(height: height)
+        .background(Capsule().fill(.quaternary))
+        .clipShape(Capsule())
+        .animation(.smooth(duration: 0.4), value: segments.map(\.value))
+        .accessibilityElement()
+        .accessibilityValue(Format.percent(segments.reduce(0) { $0 + $1.value }))
     }
 }
 

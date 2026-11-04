@@ -1,3 +1,4 @@
+#if DEBUG
 import AppKit
 import SwiftUI
 
@@ -10,15 +11,42 @@ enum DebugRender {
         // Let a few real samples accumulate so charts have data.
         let deadline = Date().addingTimeInterval(4)
         monitor.start()
+        monitor.panelDidOpen()   // also sample processes and network details
         while Date() < deadline { RunLoop.main.run(until: Date().addingTimeInterval(0.1)) }
 
         for scheme in [ColorScheme.light, .dark] {
+            // A stand-in "wallpaper" shows the floating cards; glass can't be drawn offscreen.
             let view = PanelView(monitor: monitor)
-                .background(Color(nsColor: .windowBackgroundColor))
+                .environment(\.usesGlass, false)
+                .background(LinearGradient(colors: [.indigo, .teal], startPoint: .topLeading, endPoint: .bottomTrailing))
                 .environment(\.colorScheme, scheme)
             let renderer = ImageRenderer(content: view)
             renderer.scale = 2
             if let image = renderer.nsImage { write(image, to: dir.appendingPathComponent("panel-\(scheme == .dark ? "dark" : "light").png")) }
+        }
+
+        // Detail panels, as shown in the side popovers.
+        var details: [(String, AnyView)] = [
+            ("cpu", AnyView(CPUDetail(monitor: monitor))),
+            ("storage", AnyView(StorageDetail(disk: monitor.disk, ssd: monitor.ssd))),
+            ("memory", AnyView(MemoryDetail(memory: monitor.memory, topProcesses: monitor.topProcesses))),
+            ("network", AnyView(NetworkDetail(monitor: monitor))),
+        ]
+        if let battery = monitor.battery {
+            details.append(("battery", AnyView(BatteryDetail(battery: battery, lowPowerMode: monitor.isLowPowerMode))))
+        }
+        for (name, detail) in details {
+            for scheme in [ColorScheme.light, .dark] {
+                let view = detail
+                        .background(Color(nsColor: .windowBackgroundColor))
+                    .environment(\.colorScheme, scheme)
+                let renderer = ImageRenderer(content: view)
+                renderer.scale = 2
+                if let image = renderer.nsImage {
+                    write(image, to: dir.appendingPathComponent("detail-\(name)-\(scheme == .dark ? "dark" : "light").png"))
+                    if scheme == .light { print("detail-\(name): \(Int(image.size.width)) × \(Int(image.size.height)) pt") }
+                }
+            }
         }
 
         // Spinner strip: every 3rd frame, sharp then blurred, black on white.
@@ -48,3 +76,4 @@ enum DebugRender {
         try? rep.representation(using: .png, properties: [:])?.write(to: url)
     }
 }
+#endif

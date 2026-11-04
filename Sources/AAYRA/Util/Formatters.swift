@@ -24,6 +24,15 @@ enum Format {
         return "\(Int(v)) B"
     }
 
+    /// Short memory size for tight rows: "5.9 GB", "812 MB" (binary units, like Activity Monitor).
+    static func memoryShort<T: BinaryInteger>(_ value: T) -> String {
+        let bytes = Double(Int64(clamping: value))
+        let gb = bytes / 1_073_741_824
+        if gb >= 100 { return String(format: "%.0f GB", gb) }
+        if gb >= 1 { return String(format: "%.1f GB", gb) }
+        return String(format: "%.0f MB", bytes / 1_048_576)
+    }
+
     static func rate(_ bytesPerSecond: Double) -> String {
         let value = Int64(max(0, bytesPerSecond))
         return value.formatted(.byteCount(style: .decimal, spellsOutZero: false)) + "/s"
@@ -59,8 +68,22 @@ enum Format {
         return f   // converts °C to °F automatically for regions that use it
     }()
 
+    private static let fixedTemperatureFormatter: MeasurementFormatter = {
+        let f = MeasurementFormatter()
+        f.unitStyle = .short
+        f.unitOptions = .providedUnit
+        f.numberFormatter.maximumFractionDigits = 1
+        return f
+    }()
+
+    /// Follows the Temperature setting: the region's unit, or always °C / °F.
     static func temperature(celsius: Double) -> String {
-        temperatureFormatter.string(from: Measurement(value: celsius, unit: UnitTemperature.celsius))
+        let value = Measurement(value: celsius, unit: UnitTemperature.celsius)
+        switch AppSettings.temperatureUnit {
+        case .system: return temperatureFormatter.string(from: value)
+        case .celsius: return fixedTemperatureFormatter.string(from: value)
+        case .fahrenheit: return fixedTemperatureFormatter.string(from: value.converted(to: .fahrenheit))
+        }
     }
 }
 

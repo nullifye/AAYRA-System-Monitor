@@ -4,12 +4,14 @@ import AppKit
 @MainActor
 enum AAYRAMain {
     static func main() {
+        #if DEBUG   // developer tools, left out of release builds to keep the app small
         let args = CommandLine.arguments
         if args.contains("--dump") { dumpStats(); return }
         if let i = args.firstIndex(of: "--render"), i + 1 < args.count {
             _ = NSApplication.shared
             DebugRender.run(outputDirectory: args[i + 1]); return
         }
+        #endif
         let app = NSApplication.shared
         let delegate = AppDelegate()
         app.delegate = delegate
@@ -17,6 +19,7 @@ enum AAYRAMain {
         withExtendedLifetime(delegate) { app.run() }
     }
 
+    #if DEBUG
     /// `AAYRA --dump` prints one round of readings, handy for checking them against system tools.
     private static func dumpStats() {
         let cpu = CPUProvider(), net = NetworkProvider()
@@ -88,6 +91,7 @@ enum AAYRAMain {
         print("Network:", n.interfaceKind, n.interfaceName as Any, "v4", n.localIPv4 as Any, "v6", n.localIPv6 as Any,
               "down", Format.rate(n.downloadBytesPerSec), "up", Format.rate(n.uploadBytesPerSec))
     }
+    #endif
 }
 
 @MainActor

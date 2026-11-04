@@ -3,7 +3,7 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-swift build -c release --arch arm64
+swift build -c release --arch arm64 -Xswiftc -Osize   # optimise for size: keeps the app under 1 MB
 
 APP="AAYRA.app"
 BIN="$(swift build -c release --arch arm64 --show-bin-path)/AAYRA"

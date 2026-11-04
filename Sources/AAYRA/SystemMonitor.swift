@@ -62,7 +62,7 @@ final class SystemMonitor {
         guard loop == nil else { return }
         loop = Task { [weak self] in
             while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(1))
+                try? await Task.sleep(for: .seconds(AppSettings.refreshInterval))
                 self?.tick()
             }
         }
@@ -158,6 +158,11 @@ final class SystemMonitor {
     }
 
     func refreshPublicIP(force: Bool) {
+        guard AppSettings.fetchPublicIP else {
+            publicIP = nil
+            publicIPFetchedAt = nil
+            return
+        }
         guard !isFetchingPublicIP, network.isConnected else {
             if !network.isConnected { publicIP = nil }
             return

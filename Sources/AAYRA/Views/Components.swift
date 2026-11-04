@@ -5,6 +5,7 @@ import SwiftUI
 enum Palette {
     static let cpu = Color.blue
     static let cpuSystem = Color.red
+    static let cpuEfficiency = Color.cyan
     static let storage = Color.purple
     static let memory = Color.pink
     static let battery = Color.green
@@ -22,14 +23,15 @@ enum Palette {
 
 /// Shared sizes for the compact layout, so every card lines up.
 enum Metrics {
-    static let panelWidth: CGFloat = 312
-    static let badge: CGFloat = 18
-    static let titleWidth: CGFloat = 54
-    static let valueWidth: CGFloat = 84
+    static let panelWidth: CGFloat = 370
+    static let badge: CGFloat = 30
     static let headerHeight: CGFloat = 18
+    static let cardRadius: CGFloat = 18
+    static let floatMargin: CGFloat = 12
+    static let detailWidth: CGFloat = 640   // two columns of sections
 }
 
-/// System Settings–style icon: white glyph on a filled, rounded colour tile.
+/// Control Center–style icon: white glyph on a filled colour circle.
 struct IconBadge: View {
     let symbol: String
     let color: Color
@@ -40,13 +42,13 @@ struct IconBadge: View {
             .font(.system(size: size * 0.5, weight: .semibold))
             .foregroundStyle(.white)
             .frame(width: size, height: size)
-            .background(color.gradient, in: RoundedRectangle(cornerRadius: size * 0.27, style: .continuous))
+            .background(color.gradient, in: Circle())
             .shadow(color: color.opacity(0.3), radius: 1, y: 0.5)
             .accessibilityHidden(true)
     }
 }
 
-/// Compact card: one header line (badge + caller-supplied content), then optional detail lines.
+/// Dashboard card: a large icon on the left, a title with a big headline number, then detail lines.
 struct Card<Header: View, Details: View>: View {
     let symbol: String
     let tint: Color
@@ -54,44 +56,138 @@ struct Card<Header: View, Details: View>: View {
     @ViewBuilder var details: () -> Details
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            HStack(spacing: 7) {
-                IconBadge(symbol: symbol, color: tint)
-                header()
+        HStack(alignment: .center, spacing: 12) {
+            IconBadge(symbol: symbol, color: tint)
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(alignment: .firstTextBaseline, spacing: 6) { header() }
+                details()
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
             }
-            .frame(height: Metrics.headerHeight)
-            details()
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
         }
-        .padding(.horizontal, 9)
-        .padding(.vertical, 7)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(nsColor: .quaternarySystemFill),
-                    in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .cardBackground(floating: true)
     }
 }
 
-/// The standard header: fixed-width title, a flexible middle (bar or chart), fixed-width value.
-struct MeterHeader<Middle: View>: View {
+extension EnvironmentValues {
+    /// Off only for offscreen debug renders, which can't draw glass or materials.
+    @Entry var usesGlass = true
+}
+
+/// Two card surfaces:
+/// - floating: a Notification Center–style tile that hovers over the desktop on its own. Liquid Glass
+///   on macOS 26+ (glass over content, as Apple intends), a blurred material with a soft shadow before.
+/// - platter: a solid, lighter rounded surface for groups inside a popover, which is already glass,
+///   so glass is never stacked on glass and text stays easy to read.
+private struct CardBackground: ViewModifier {
+    var radius: CGFloat
+    var floating: Bool
+    @Environment(\.colorScheme) private var scheme
+    @Environment(\.usesGlass) private var usesGlass
+
+    func body(content: Content) -> some View {
+        let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
+        if floating {
+            if #available(macOS 26, *), usesGlass {
+                content.glassEffect(.regular, in: shape)
+            } else {
+                content.background {
+                    Group {
+                        if usesGlass {
+                            shape.fill(.regularMaterial)
+                        } else {
+                            shape.fill(Color(nsColor: .windowBackgroundColor))
+                        }
+                    }
+                    .overlay(shape.strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5))
+                    .shadow(color: .black.opacity(0.18), radius: 8, y: 3)
+                }
+            }
+        } else {
+            content.background {
+                shape
+                    .fill(scheme == .dark ? Color.white.opacity(0.07) : Color.white.opacity(0.6))
+                    .overlay(shape.strokeBorder(Color.primary.opacity(scheme == .dark ? 0.08 : 0.05), lineWidth: 0.5))
+            }
+        }
+    }
+}
+
+extension View {
+    func cardBackground(radius: CGFloat = Metrics.cardRadius, floating: Bool = false) -> some View {
+        modifier(CardBackground(radius: radius, floating: floating))
+    }
+}
+
+/// Card title on the left, the headline number on the right.
+struct MeterHeader: View {
     let title: String
     let value: String
-    @ViewBuilder var middle: () -> Middle
+    var suffix: String?
 
     var body: some View {
         Text(title)
-            .font(.callout.weight(.semibold))
-            .frame(width: Metrics.titleWidth, alignment: .leading)
-        middle()
-            .frame(maxWidth: .infinity)
-        Text(value)
-            .font(.callout.weight(.medium))
-            .monospacedDigit()
+            .font(.body.weight(.semibold))
             .lineLimit(1)
-            .minimumScaleFactor(0.8)
-            .contentTransition(.numericText())
-            .frame(width: Metrics.valueWidth, alignment: .trailing)
+        Spacer(minLength: 8)
+        BigValue(value, suffix: suffix)
+    }
+}
+
+/// A large rounded number with its unit in smaller secondary text: "24 %", "40.8 GB free".
+struct BigValue: View {
+    let number: String
+    let unit: String?
+    var size: CGFloat = 22
+
+    /// Splits "40.8 GB" into "40.8" + "GB" and "24%" into "24" + "%"; `suffix` is appended to the unit.
+    init(_ text: String, suffix: String? = nil, size: CGFloat = 22) {
+        var number = text, unit: String?
+        if text.hasSuffix("%") {
+            number = String(text.dropLast()); unit = "%"
+        } else if let space = text.lastIndex(of: " ") {
+            number = String(text[..<space]); unit = String(text[text.index(after: space)...])
+        }
+        self.number = number
+        self.unit = [unit, suffix].compactMap { $0 }.joined(separator: " ").nilIfEmpty
+        self.size = size
+    }
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 2) {
+            Text(number)
+                .font(.system(size: size, weight: .semibold, design: .rounded))
+                .monospacedDigit()
+                .contentTransition(.numericText())
+            if let unit {
+                Text(unit)
+                    .font(.callout.weight(.medium))
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .lineLimit(1)
+        .fixedSize()
+    }
+}
+
+private extension String {
+    var nilIfEmpty: String? { isEmpty ? nil : self }
+}
+
+/// Stats in equal, fixed columns, so nothing shifts sideways when a value changes width.
+struct StatRow: View {
+    let stats: [Stat]
+
+    var body: some View {
+        HStack(spacing: 0) {
+            ForEach(stats.indices, id: \.self) { i in
+                stats[i].frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
     }
 }
 
@@ -271,6 +367,7 @@ struct CoreBars: View {
     let loads: [Double]
     var tint: Color = Palette.cpu
     var height: CGFloat = 12
+    var barWidth: CGFloat = 5
 
     var body: some View {
         HStack(alignment: .bottom, spacing: 2) {
@@ -281,10 +378,62 @@ struct CoreBars: View {
                         .fill((load > 0.9 ? Color.red : load > 0.7 ? Color.orange : tint).gradient)
                         .frame(height: max(1.5, height * min(load, 1)))
                 }
-                .frame(width: 5, height: height)
+                .frame(width: barWidth, height: height)
             }
         }
         .animation(.smooth(duration: 0.4), value: loads)
         .accessibilityHidden(true)
+    }
+}
+
+/// Makes a card clickable: it highlights on hover and presents its detail panel
+/// in a popover beside the main panel.
+/// Clicking anywhere outside the popover closes it.
+struct DetailPopover<Detail: View>: ViewModifier {
+    let kind: DetailKind
+    @Binding var selection: DetailKind?
+    let edge: Edge
+    let tint: Color
+    @ViewBuilder var detail: () -> Detail
+
+    @State private var isHovering = false
+    @State private var closedAt = Date.distantPast
+
+    private var isOpen: Bool { selection == kind }
+
+    func body(content: Content) -> some View {
+        let shape = RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous)
+        content
+            .overlay(shape.fill(Color.primary.opacity(isHovering || isOpen ? 0.05 : 0)).allowsHitTesting(false))
+            .overlay(shape.strokeBorder(tint.opacity(isOpen ? 0.6 : 0), lineWidth: 1))
+            .contentShape(shape)
+            .onHover { isHovering = $0 }
+            .onTapGesture {
+                // A click on the open card first dismisses the popover; don't reopen it straight away.
+                if !isOpen, Date().timeIntervalSince(closedAt) < 0.3 { return }
+                selection = isOpen ? nil : kind
+            }
+            .animation(.easeOut(duration: 0.12), value: isHovering)
+            .animation(.easeOut(duration: 0.12), value: isOpen)
+            .popover(isPresented: Binding(
+                get: { selection == kind },
+                set: { shown in
+                    if !shown, selection == kind {
+                        selection = nil
+                        closedAt = Date()
+                    }
+                }
+            ), arrowEdge: edge) {
+                detail()
+            }
+            .accessibilityAddTraits(.isButton)
+            .accessibilityHint("Shows details")
+    }
+}
+
+extension View {
+    func detailPopover<Detail: View>(_ kind: DetailKind, selection: Binding<DetailKind?>, edge: Edge, tint: Color,
+                                     @ViewBuilder detail: @escaping () -> Detail) -> some View {
+        modifier(DetailPopover(kind: kind, selection: selection, edge: edge, tint: tint, detail: detail))
     }
 }

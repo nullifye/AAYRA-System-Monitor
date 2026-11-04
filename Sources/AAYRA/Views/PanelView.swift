@@ -47,7 +47,7 @@ struct PanelView: View {
     }
 
     private var storageCard: some View {
-        StorageCard(disk: monitor.disk, io: monitor.diskIO)
+        StorageCard(disk: monitor.disk, io: monitor.diskIO, volumes: monitor.volumes)
             .detailPopover(.storage, selection: $openDetail, edge: detailEdge, tint: Palette.storage) {
                 StorageDetail(monitor: monitor)
             }
@@ -163,6 +163,7 @@ private struct GPUCard: View {
 private struct StorageCard: View {
     let disk: DiskStats
     let io: DiskIO
+    let volumes: [VolumeStats]
 
     var body: some View {
         Card(symbol: "internaldrive.fill", tint: Palette.storage) {
@@ -183,6 +184,25 @@ private struct StorageCard: View {
                 Stat(label: "Write", value: Format.compactRate(io.writeBytesPerSec), dot: Palette.diskWrite),
                 Stat(label: "", value: ""),
             ])
+            // Other mounted volumes (external drives, disk images, network shares), two at most.
+            ForEach(volumes.prefix(2)) { volume in
+                HStack(spacing: 5) {
+                    Image(systemName: volume.symbol)
+                        .font(.caption)
+                        .frame(width: 14)
+                    Text(volume.name)
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    Spacer(minLength: 6)
+                    Text("\(Format.diskShort(volume.available)) free")
+                        .foregroundStyle(.primary)
+                        .monospacedDigit()
+                }
+            }
+            if volumes.count > 2 {
+                Text("+\(volumes.count - 2) more volumes")
+            }
         }
     }
 

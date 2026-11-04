@@ -30,6 +30,7 @@ struct SettingsView: View {
     @AppStorage(AppSettings.Key.animateIcon) private var animateIcon = true
     @AppStorage(AppSettings.Key.showPercentInMenuBar) private var showPercent = false
     @AppStorage(AppSettings.Key.showNetworkInMenuBar) private var showNetworkSpeed = false
+    @AppStorage(AppSettings.Key.shortcut) private var shortcut = AppSettings.Shortcut.optionCommandM.rawValue
     @AppStorage(AppSettings.Key.refreshInterval) private var refreshInterval = 1.0
     @AppStorage(AppSettings.Key.temperatureUnit) private var temperatureUnit = AppSettings.TemperatureUnit.system.rawValue
     @AppStorage(AppSettings.Key.fetchPublicIP) private var fetchPublicIP = true
@@ -67,7 +68,7 @@ struct SettingsView: View {
                 .padding(.vertical, 2)
             }
 
-            Section("General") {
+            Section {
                 Toggle("Launch at Login", isOn: $launchAtLogin)
                     .onChange(of: launchAtLogin) { _, enabled in
                         do {
@@ -76,6 +77,16 @@ struct SettingsView: View {
                             launchAtLogin = SMAppService.mainApp.status == .enabled
                         }
                     }
+                Picker("Open panel from any app", selection: $shortcut) {
+                    ForEach(AppSettings.Shortcut.allCases, id: \.rawValue) { option in
+                        Text(option.title).tag(option.rawValue)
+                    }
+                }
+            } header: {
+                Text("General")
+            } footer: {
+                Text("⌥⌘M is also “Minimize All” in many apps; while AAYRA runs, it opens the panel instead. Pick another shortcut if you use that.")
+                    .foregroundStyle(.secondary)
             }
 
             Section {

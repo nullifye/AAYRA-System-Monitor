@@ -18,6 +18,8 @@ let package = Package(
             linkerSettings: [
                 .linkedFramework("IOKit"),
                 .linkedFramework("ServiceManagement"),
+                .linkedFramework("DiskArbitration"),   // how external drives are connected (USB, Thunderbolt…)
+                .linkedFramework("Carbon"),            // global keyboard shortcut (RegisterEventHotKey)
             ]
         )
     ],

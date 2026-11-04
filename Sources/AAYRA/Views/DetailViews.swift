@@ -556,6 +556,17 @@ struct StorageDetail: View {
                 if let format = disk.fileSystem { DetailRow("Format", format) }
                 if let encrypted = disk.isEncrypted { DetailRow("FileVault", onOff(encrypted)) }
             }
+            DetailSection("Other Volumes") {
+                if monitor.volumes.isEmpty {
+                    EmptyRow(text: "No external drives connected")
+                }
+                ForEach(monitor.volumes) { volume in
+                    VolumeRow(volume: volume) { monitor.eject(volume) }
+                }
+                if let message = monitor.volumeMessage {
+                    Text(message).font(.callout).foregroundStyle(.orange)
+                }
+            }
         }
     }
 
@@ -565,6 +576,53 @@ struct StorageDetail: View {
 
     private func share(_ bytes: Int64) -> Double {
         disk.total > 0 ? Double(bytes) / Double(disk.total) : 0
+    }
+}
+
+/// One mounted volume: name with its kind and connection, a usage bar, free space and format.
+/// Click to open it in Finder; ejectable volumes get an eject button.
+private struct VolumeRow: View {
+    let volume: VolumeStats
+    let onEject: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 6) {
+                Image(systemName: volume.symbol)
+                    .foregroundStyle(Palette.storage)
+                    .frame(width: 18)
+                Text(volume.name)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                Text(([volume.kindName, volume.connection].compactMap { $0 }).joined(separator: " · "))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                Spacer(minLength: 8)
+                if volume.isEjectable {
+                    Button(action: onEject) {
+                        Image(systemName: "eject.fill")
+                    }
+                    .buttonStyle(.borderless)
+                    .help("Eject “\(volume.name)”")
+                    .accessibilityLabel("Eject \(volume.name)")
+                }
+            }
+            StackedBar(segments: [.init(value: volume.usedFraction, color: Palette.storage)], height: 6)
+            HStack {
+                Text("\(Format.diskBytes(volume.available)) free of \(Format.diskBytes(volume.total))")
+                    .monospacedDigit()
+                Spacer(minLength: 8)
+                Text(([volume.format, volume.isReadOnly ? "Read-only" : nil].compactMap { $0 }).joined(separator: " · "))
+            }
+            .font(.callout)
+            .foregroundStyle(.secondary)
+        }
+        .font(.body)
+        .padding(.vertical, 2)
+        .contentShape(Rectangle())
+        .onTapGesture { NSWorkspace.shared.open(volume.url) }
+        .help("Open in Finder")
     }
 }
 

@@ -7,10 +7,25 @@ enum AppSettings {
         static let animateIcon = "animateIcon"
         static let showPercentInMenuBar = "showPercentInMenuBar"
         static let showNetworkInMenuBar = "showNetworkInMenuBar"
+        static let shortcut = "panelShortcut"
         static let refreshInterval = "refreshInterval"
         static let fetchPublicIP = "fetchPublicIP"
         static let temperatureUnit = "temperatureUnit"
         static func showsSection(_ kind: DetailKind) -> String { "showSection.\(kind)" }
+    }
+
+    /// Keyboard shortcut that opens and closes the panel from any app.
+    enum Shortcut: String, CaseIterable {
+        case optionCommandM, controlOptionM, controlOptionCommandM, off
+
+        var title: String {
+            switch self {
+            case .optionCommandM: "⌥⌘M"
+            case .controlOptionM: "⌃⌥M"
+            case .controlOptionCommandM: "⌃⌥⌘M"
+            case .off: "Off"
+            }
+        }
     }
 
     enum TemperatureUnit: String, CaseIterable {
@@ -26,6 +41,9 @@ enum AppSettings {
     static var animateIcon: Bool { bool(Key.animateIcon, default: true) }
     static var showPercentInMenuBar: Bool { bool(Key.showPercentInMenuBar, default: false) }
     static var showNetworkInMenuBar: Bool { bool(Key.showNetworkInMenuBar, default: false) }
+    static var shortcut: Shortcut {
+        Shortcut(rawValue: defaults.string(forKey: Key.shortcut) ?? "") ?? .optionCommandM
+    }
     static var fetchPublicIP: Bool { bool(Key.fetchPublicIP, default: true) }
 
     /// Seconds between readings: 1, 2 or 5.

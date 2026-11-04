@@ -43,6 +43,9 @@ final class StatusItemController: NSObject {
     private lazy var contextMenu: NSMenu = makeContextMenu()
     /// Optional second menu bar item with live network speed (Settings → Menu Bar).
     private var networkItem: NSStatusItem?
+    /// System-wide shortcut that toggles the panel (Settings → General).
+    private var hotKey: GlobalHotKey?
+    private var registeredShortcut: AppSettings.Shortcut?
     private var lastNetworkText = ""
     private static let networkItemLength: CGFloat = 60
 
@@ -76,6 +79,13 @@ final class StatusItemController: NSObject {
                                                name: NSApplication.didResignActiveNotification, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(appDidResignActive),
                                                name: .aayraClosePanel, object: nil)
+        hotKey = GlobalHotKey { [weak self] in
+            MainActor.assumeIsolated { self?.togglePanel() }
+        }
+        applyShortcut()
+        // Pick up a new shortcut from Settings straight away.
+        NotificationCenter.default.addObserver(self, selector: #selector(applyShortcut),
+                                               name: UserDefaults.didChangeNotification, object: nil)
 
         let center = NSWorkspace.shared.notificationCenter
         center.addObserver(self, selector: #selector(pause), name: NSWorkspace.screensDidSleepNotification, object: nil)
@@ -208,6 +218,18 @@ final class StatusItemController: NSObject {
         } else {
             showPopover()
         }
+    }
+
+    @objc private func applyShortcut() {
+        let shortcut = AppSettings.shortcut
+        guard shortcut != registeredShortcut else { return }
+        registeredShortcut = shortcut
+        hotKey?.register(shortcut)
+    }
+
+    /// Opens the panel, or closes it if it's already open (the keyboard shortcut).
+    func togglePanel() {
+        if panel.isVisible { closePanel() } else { showPopover() }
     }
 
     func showPopover() {

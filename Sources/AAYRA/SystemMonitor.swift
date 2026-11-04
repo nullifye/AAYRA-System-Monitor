@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import Observation
 
@@ -29,6 +30,10 @@ final class SystemMonitor {
     private(set) var gpu: GPUStats?
     private(set) var gpuHistory: [Double] = Array(repeating: 0, count: historyLength)
     private(set) var diskIO = DiskIO()
+    /// Mounted volumes other than the startup disk (external drives, disk images, network shares).
+    private(set) var volumes: [VolumeStats] = []
+    /// Shown briefly after an eject fails (e.g. "“Backup” is in use").
+    private(set) var volumeMessage: String?
     private(set) var diskReadHistory: [Double] = Array(repeating: 0, count: historyLength)
     private(set) var diskWriteHistory: [Double] = Array(repeating: 0, count: historyLength)
 
@@ -75,6 +80,14 @@ final class SystemMonitor {
         lastHealthRefresh = Self.now
         Task { await refreshReportedHealth() }
         wifiProvider.onAuthorizationChange = { [weak self] in self?.refreshWiFiName() }
+        // Update the volume list the moment a drive is plugged in, ejected or renamed.
+        let workspace = NSWorkspace.shared.notificationCenter
+        for name in [NSWorkspace.didMountNotification, NSWorkspace.didUnmountNotification,
+                     NSWorkspace.didRenameVolumeNotification] {
+            workspace.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.volumes = VolumeProvider.sample() }
+            }
+        }
     }
 
     func start() {
@@ -152,6 +165,7 @@ final class SystemMonitor {
     private func refreshSlowMetrics() {
         lastSlowRefresh = Self.now
         if let d = DiskProvider.sample() { disk = d }
+        volumes = VolumeProvider.sample()
         battery = BatteryProvider.sample().map { b in
             var b = b
             b.reportedHealth = reportedHealth?.maximumCapacity
@@ -205,6 +219,31 @@ final class SystemMonitor {
         topProcesses = result.memory
         topCPUProcesses = result.cpu
         processCount = processSampler.processCount
+    }
+
+    /// Unmounts and ejects a volume (off the main thread, as Finder can take a moment).
+    func eject(_ volume: VolumeStats) {
+        let url = volume.url, name = volume.name
+        Task.detached {
+            let failure: String?
+            do {
+                try NSWorkspace.shared.unmountAndEjectDevice(at: url)
+                failure = nil
+            } catch {
+                failure = "Couldn't eject “\(name)”. It may be in use."
+            }
+            await MainActor.run { [weak self] in
+                guard let self else { return }
+                self.volumes = VolumeProvider.sample()
+                self.volumeMessage = failure
+            }
+            if failure != nil {
+                try? await Task.sleep(for: .seconds(5))
+                await MainActor.run { [weak self] in
+                    if self?.volumeMessage == failure { self?.volumeMessage = nil }
+                }
+            }
+        }
     }
 
     func panelDidClose() {

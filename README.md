@@ -24,6 +24,19 @@ Native Swift and SwiftUI · Apple Silicon · macOS 15 or later · under 1 MB
 
 ## Install
 
+### With Homebrew
+
+```bash
+brew tap nullifye/aayra https://github.com/nullifye/AAYRA-System-Monitor
+brew install --cask nullifye/aayra/aayra
+```
+
+Using the full name (`nullifye/aayra/aayra`) tells Homebrew to trust just this cask, as Homebrew 6 and later require for third-party taps. To install with the short name `brew install --cask aayra`, run `brew trust --cask nullifye/aayra/aayra` once first.
+
+The cask removes the quarantine flag for you, so AAYRA opens straight away. Update it with `brew upgrade --cask aayra`. Remove it with `brew uninstall --cask aayra`, or add `--zap` to delete its settings too.
+
+### Manually
+
 1. Download **`AAYRA-<version>.zip`** from the [Releases](../../releases) page, or from the artifacts of the latest [Build](../../actions/workflows/build.yml) run.
 2. Unzip it and drag **AAYRA.app** into **Applications**.
 3. **Take it out of quarantine.** AAYRA is ad-hoc signed, not notarized by Apple, so macOS blocks it when it comes from the internet. You'll see something like *"Apple could not verify 'AAYRA' is free of malware"* or *"AAYRA is damaged and can't be opened"*. Open **Terminal** and run:
@@ -133,7 +146,13 @@ GitHub Actions ([`.github/workflows/build.yml`](.github/workflows/build.yml)) bu
 - **Releases:** set the version in `Resources/Info.plist`, commit, then push a matching tag. The build checks that the tag matches the version, then publishes a GitHub Release with the zip attached.
 
   ```bash
-  git tag -a v1.3 -m "AAYRA 1.3" && git push origin v1.3
+  git tag -a v1.4 -m "AAYRA 1.4" && git push origin v1.4
+  ```
+- **Homebrew:** once CI has published the release, point the cask at it, then commit and push:
+
+  ```bash
+  scripts/update-cask.sh            # reads the version from Info.plist, downloads the zip, writes its SHA-256
+  git commit -m "Homebrew cask: AAYRA 1.4" Casks/aayra.rb && git push
   ```
 
 ## Privacy and notes
@@ -148,6 +167,6 @@ GitHub Actions ([`.github/workflows/build.yml`](.github/workflows/build.yml)) bu
 
 ## Versions
 
-- **Unreleased.** Optional update check against GitHub Releases (off by default). GPU card and detail panel (off by default). External drives and other volumes in Storage, with eject. Global keyboard shortcut (⌥⌘M by default) to open the panel. Top Processes rows expand to show an app's individual processes (one at a time). Detail panels respond to the first click and scroll when taller than the screen.
+- **1.4.** Optional update check against GitHub Releases (off by default). GPU card and detail panel (off by default). External drives and other volumes in Storage, with eject. Global keyboard shortcut (⌥⌘M by default) to open the panel. Top Processes rows expand to show an app's individual processes (one at a time). Detail panels respond to the first click and scroll when taller than the screen.
 - **1.3.** Quick-action buttons in detail panels (Manage Storage, Battery and Wi-Fi settings, Activity Monitor), processes grouped under their app's real name, live disk read/write speed, VPN indicator, optional network speed in the menu bar, author and links in Settings, scrolling detail panels on small screens, and charts and background refreshes that follow the refresh-rate setting.
 - **1.2.** Floating dashboard with big numbers, click-to-open detail panels, Settings window, SSD SMART health, deep battery details, redesigned per-core view, Control Center–style visuals.

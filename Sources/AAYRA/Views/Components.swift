@@ -6,6 +6,8 @@ enum Palette {
     static let cpu = Color.blue
     static let cpuSystem = Color.red
     static let cpuEfficiency = Color.cyan
+    static let gpu = Color.indigo
+    static let gpuSymbol = "cube.transparent.fill"
     static let storage = Color.purple
     static let memory = Color.pink
     static let battery = Color.green
@@ -382,8 +384,24 @@ struct DetailPopover<Detail: View>: ViewModifier {
     @State private var isHovering = false
     @State private var closedAt = Date.distantPast
     @State private var anchor: NSView?
+    #if DEBUG
+    @Environment(\.isSnapshot) private var isSnapshot
+    #else
+    private let isSnapshot = false
+    #endif
 
     private var isOpen: Bool { selection == kind }
+
+    private func present() {
+        guard let anchor else { return }
+        DetailPresenter.shared.show(kind, content: AnyView(detail()), from: anchor, edge: edge) {
+            // Closed by a click elsewhere, Escape or the panel closing.
+            if selection == kind {
+                selection = nil
+                closedAt = Date()
+            }
+        }
+    }
 
     func body(content: Content) -> some View {
         let shape = RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous)
@@ -399,19 +417,16 @@ struct DetailPopover<Detail: View>: ViewModifier {
             }
             .animation(.easeOut(duration: 0.12), value: isHovering)
             .animation(.easeOut(duration: 0.12), value: isOpen)
-            .background(PopoverAnchor { anchor = $0 })
-            .onChange(of: isOpen) { _, open in
-                if open, let anchor {
-                    DetailPresenter.shared.show(kind, content: AnyView(detail()), from: anchor, edge: edge) {
-                        // Closed by a click elsewhere, Escape or the panel closing.
-                        if selection == kind {
-                            selection = nil
-                            closedAt = Date()
-                        }
+            .background {
+                if !isSnapshot {   // AppKit views can't be drawn offscreen
+                    PopoverAnchor { view in
+                        anchor = view
+                        if isOpen { present() }   // clicked before the anchor existed
                     }
-                } else if !open {
-                    DetailPresenter.shared.close(kind)
                 }
+            }
+            .onChange(of: isOpen) { _, open in
+                if open { present() } else { DetailPresenter.shared.close(kind) }
             }
             .accessibilityAddTraits(.isButton)
             .accessibilityHint("Shows details")

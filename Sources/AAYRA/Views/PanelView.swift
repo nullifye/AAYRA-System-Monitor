@@ -8,6 +8,7 @@ struct PanelView: View {
     var onResize: ((CGSize) -> Void)?
     @State private var openDetail: DetailKind?
     @AppStorage(AppSettings.Key.showsSection(.cpu)) private var showCPU = true
+    @AppStorage(AppSettings.Key.showsSection(.gpu)) private var showGPU = true
     @AppStorage(AppSettings.Key.showsSection(.storage)) private var showStorage = true
     @AppStorage(AppSettings.Key.showsSection(.memory)) private var showMemory = true
     @AppStorage(AppSettings.Key.showsSection(.battery)) private var showBattery = true
@@ -17,6 +18,7 @@ struct PanelView: View {
         FloatingStack {
             HeaderView(monitor: monitor)
             if showCPU { cpuCard }
+            if showGPU, monitor.gpu != nil { gpuCard }
             if showStorage { storageCard }
             if showMemory { memoryCard }
             if showBattery, let battery = monitor.battery { batteryCard(battery) }
@@ -34,6 +36,13 @@ struct PanelView: View {
         CPUCard(monitor: monitor)
             .detailPopover(.cpu, selection: $openDetail, edge: detailEdge, tint: Palette.cpu) {
                 CPUDetail(monitor: monitor)
+            }
+    }
+
+    private var gpuCard: some View {
+        GPUCard(monitor: monitor)
+            .detailPopover(.gpu, selection: $openDetail, edge: detailEdge, tint: Palette.gpu) {
+                GPUDetail(monitor: monitor)
             }
     }
 
@@ -124,6 +133,26 @@ private struct CPUCard: View {
                 Stat(label: "User", value: Format.percent(cpu.user), dot: Palette.cpu),
                 Stat(label: "System", value: Format.percent(cpu.system), dot: Palette.cpuSystem),
                 Stat(label: "Load", value: String(format: "%.2f", cpu.loadAverage.0)),
+            ])
+        }
+    }
+}
+
+// MARK: - GPU
+
+private struct GPUCard: View {
+    let monitor: SystemMonitor
+
+    var body: some View {
+        let gpu = monitor.gpu ?? GPUStats()
+        Card(symbol: Palette.gpuSymbol, tint: Palette.gpu) {
+            MeterHeader(title: "GPU", value: Format.percent(gpu.device))
+        } details: {
+            Sparkline(values: monitor.gpuHistory, color: Palette.gpu, height: 22)
+            StatRow(stats: [
+                Stat(label: "Render", value: Format.percent(gpu.renderer), dot: Palette.gpu),
+                Stat(label: "Tiler", value: Format.percent(gpu.tiler)),
+                Stat(label: "Mem.", value: Format.memoryShort(gpu.memoryInUse)),
             ])
         }
     }

@@ -26,6 +26,8 @@ final class SystemMonitor {
     private(set) var network = NetworkStats()
     private(set) var downloadHistory: [Double] = Array(repeating: 0, count: historyLength)
     private(set) var uploadHistory: [Double] = Array(repeating: 0, count: historyLength)
+    private(set) var gpu: GPUStats?
+    private(set) var gpuHistory: [Double] = Array(repeating: 0, count: historyLength)
     private(set) var diskIO = DiskIO()
     private(set) var diskReadHistory: [Double] = Array(repeating: 0, count: historyLength)
     private(set) var diskWriteHistory: [Double] = Array(repeating: 0, count: historyLength)
@@ -67,6 +69,7 @@ final class SystemMonitor {
         _ = cpuProvider.sample()            // prime the tick baseline
         _ = networkProvider.sample()
         _ = diskIOProvider.sample()
+        gpu = GPUProvider.sample()
         refreshSlowMetrics()
         refreshSSD()
         lastHealthRefresh = Self.now
@@ -100,6 +103,7 @@ final class SystemMonitor {
             cpuHistory = Array(repeating: 0, count: Self.historyLength)
             downloadHistory = Array(repeating: 0, count: Self.historyLength)
             uploadHistory = Array(repeating: 0, count: Self.historyLength)
+            gpuHistory = Array(repeating: 0, count: Self.historyLength)
             diskReadHistory = Array(repeating: 0, count: Self.historyLength)
             diskWriteHistory = Array(repeating: 0, count: Self.historyLength)
         }
@@ -110,6 +114,10 @@ final class SystemMonitor {
             smoothedCPU += 0.35 * (sample.total - smoothedCPU)
         }
         if let m = MemoryProvider.sample() { memory = m }
+        if let g = GPUProvider.sample() {
+            gpu = g
+            push(&gpuHistory, g.device)
+        }
         if isPanelOpen && Self.isDue(lastDetailsRefresh, every: 3, now: now) {
             sampleProcesses()
             refreshNetworkDetails()

@@ -3,7 +3,7 @@ import SwiftUI
 // MARK: - Building blocks
 
 /// Which card's detail panel is open.
-enum DetailKind: Hashable { case cpu, storage, memory, battery, network }
+enum DetailKind: Hashable { case cpu, gpu, storage, memory, battery, network }
 
 /// A button in a detail panel's header, e.g. "Manage Storage…".
 struct DetailAction {
@@ -442,6 +442,46 @@ private struct CoreCluster: View {
 
     private func color(for load: Double) -> Color {
         load > 0.9 ? .red : load > 0.7 ? .orange : tint
+    }
+}
+
+// MARK: - GPU
+
+struct GPUDetail: View {
+    let monitor: SystemMonitor
+
+    var body: some View {
+        let gpu = monitor.gpu ?? GPUStats()
+        let history = monitor.gpuHistory
+        let span = Format.span(monitor.historySpan)
+        DetailPanel(symbol: Palette.gpuSymbol, tint: Palette.gpu, title: "GPU", subtitle: subtitle(gpu),
+                    actions: [.activityMonitor]) {
+            DetailSection("Usage") {
+                Sparkline(values: history, color: Palette.gpu, height: 34)
+                    .padding(.vertical, 2)
+                DetailRow("Overall", pct(gpu.device), dot: Palette.gpu)
+                DetailRow("Renderer (pixels)", pct(gpu.renderer))
+                DetailRow("Tiler (geometry)", pct(gpu.tiler))
+                DetailRow("Peak (\(span))", pct(history.max() ?? 0))
+            }
+        } trailing: {
+            DetailSection("Memory") {
+                DetailRow("In use", Format.bytes(gpu.memoryInUse))
+                DetailRow("Allocated", Format.bytes(gpu.memoryAllocated))
+                DetailRow("Type", "Unified (shared with CPU)")
+            }
+            DetailSection("Hardware") {
+                DetailRow("GPU", gpu.model ?? MachineInfo.chip)
+                if let cores = ChipInfo.gpuCores { DetailRow("GPU cores", "\(cores)") }
+                DetailRow("GPU restarts", gpu.recoveries == 0 ? "None" : "\(gpu.recoveries) since boot",
+                          dot: gpu.recoveries == 0 ? .green : .orange)
+            }
+        }
+    }
+
+    private func subtitle(_ gpu: GPUStats) -> String {
+        let name = gpu.model ?? MachineInfo.chip
+        return ChipInfo.gpuCores.map { "\(name) · \($0) cores" } ?? name
     }
 }
 

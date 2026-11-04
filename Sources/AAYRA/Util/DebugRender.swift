@@ -23,6 +23,7 @@ enum DebugRender {
         // Detail panels drawn as they appear in their popover.
         var details: [(String, AnyView)] = [
             ("cpu", AnyView(CPUDetail(monitor: monitor))),
+            ("gpu", AnyView(GPUDetail(monitor: monitor))),
             ("storage", AnyView(StorageDetail(monitor: monitor))),
             ("memory", AnyView(MemoryDetail(memory: monitor.memory, topProcesses: monitor.topProcesses))),
             ("network", AnyView(NetworkDetail(monitor: monitor))),

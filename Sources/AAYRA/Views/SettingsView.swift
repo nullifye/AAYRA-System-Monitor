@@ -34,6 +34,7 @@ struct SettingsView: View {
     @AppStorage(AppSettings.Key.temperatureUnit) private var temperatureUnit = AppSettings.TemperatureUnit.system.rawValue
     @AppStorage(AppSettings.Key.fetchPublicIP) private var fetchPublicIP = true
     @AppStorage(AppSettings.Key.showsSection(.cpu)) private var showCPU = true
+    @AppStorage(AppSettings.Key.showsSection(.gpu)) private var showGPU = true
     @AppStorage(AppSettings.Key.showsSection(.storage)) private var showStorage = true
     @AppStorage(AppSettings.Key.showsSection(.memory)) private var showMemory = true
     @AppStorage(AppSettings.Key.showsSection(.battery)) private var showBattery = true
@@ -41,6 +42,7 @@ struct SettingsView: View {
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
 
     private let hasBattery = BatteryProvider.sample() != nil
+    private let hasGPU = GPUProvider.sample() != nil
     private let version = AppInfo.version
 
     var body: some View {
@@ -93,6 +95,9 @@ struct SettingsView: View {
 
             Section("Sections") {
                 sectionToggle("CPU", symbol: "cpu", color: Palette.cpu, isOn: $showCPU)
+                if hasGPU {
+                    sectionToggle("GPU", symbol: Palette.gpuSymbol, color: Palette.gpu, isOn: $showGPU)
+                }
                 sectionToggle("Storage", symbol: "internaldrive.fill", color: Palette.storage, isOn: $showStorage)
                 sectionToggle("Memory", symbol: "memorychip", color: Palette.memory, isOn: $showMemory)
                 if hasBattery {

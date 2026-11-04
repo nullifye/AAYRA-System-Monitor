@@ -17,6 +17,7 @@ Native Swift and SwiftUI · Apple Silicon · macOS 15 or later · under 1 MB
 - 🔋 **Deep battery info.** Health and condition (matching System Settings), cycles, full-charge vs design capacity, live watts, voltage and current, per-cell voltages, adapter, and lifetime records (temperature range, peak currents, operating hours). It also shows who assembled the pack and who made the cells (e.g. Sunwoda / ATL), plus the estimated manufacture date and age.
 - 💾 **Storage and SSD health.** Live disk read/write speed with a chart. NVMe SMART data: health %, spare capacity, temperature, power-on hours, unsafe shutdowns, media errors, and total data written and read.
 - 🧠 **CPU and memory.** Usage history, per-core load grouped by Performance and Efficiency cores, chip and cache details, thermal state, and top processes by CPU and by memory. Helper processes are added up under their app's real name (e.g. *Visual Studio Code · 16*), like Activity Monitor. Memory shows app / wired / compressed / cached, pressure and swap.
+- 🎮 **GPU.** Live GPU load with a history chart, split into renderer (pixels) and tiler (geometry) work, plus the unified memory the GPU is using and allocated, core count and GPU restarts. Read from the graphics driver, no admin rights needed.
 - 🌐 **Network.** Live ↓/↑ speed chart, Wi-Fi name, signal, noise and SNR, channel and band, standard, security, local and public IP (click to copy), router, DNS and MAC. A **VPN** badge appears while a VPN is connected.
 - ⚙️ **Settings.** Launch at Login, icon animation, CPU % and network speed in the menu bar, which cards to show, refresh rate (1, 2 or 5 s), temperature unit, and an opt-out for the public IP lookup.
 - 🪶 **Light.** About 2–4 % CPU while idling in the menu bar, and the whole app is under 1 MB.
@@ -119,5 +120,6 @@ GitHub Actions ([`.github/workflows/build.yml`](.github/workflows/build.yml)) bu
 
 ## Versions
 
+- **Unreleased.** GPU card and detail panel. Top Processes rows expand to show an app's individual processes (one at a time). Detail panels respond to the first click and scroll when taller than the screen.
 - **1.3.** Quick-action buttons in detail panels (Manage Storage, Battery and Wi-Fi settings, Activity Monitor), processes grouped under their app's real name, live disk read/write speed, VPN indicator, optional network speed in the menu bar, author and links in Settings, scrolling detail panels on small screens, and charts and background refreshes that follow the refresh-rate setting.
 - **1.2.** Floating dashboard with big numbers, click-to-open detail panels, Settings window, SSD SMART health, deep battery details, redesigned per-core view, Control Center–style visuals.

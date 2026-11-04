@@ -146,13 +146,13 @@ GitHub Actions ([`.github/workflows/build.yml`](.github/workflows/build.yml)) bu
 - **Releases:** set the version in `Resources/Info.plist`, commit, then push a matching tag. The build checks that the tag matches the version, then publishes a GitHub Release with the zip attached.
 
   ```bash
-  git tag -a v1.4 -m "AAYRA 1.4" && git push origin v1.4
+  git tag -a v1.5 -m "AAYRA 1.5" && git push origin v1.5
   ```
 - **Homebrew:** once CI has published the release, point the cask at it, then commit and push:
 
   ```bash
   scripts/update-cask.sh            # reads the version from Info.plist, downloads the zip, writes its SHA-256
-  git commit -m "Homebrew cask: AAYRA 1.4" Casks/aayra.rb && git push
+  git commit -m "Homebrew cask: AAYRA 1.5" Casks/aayra.rb && git push
   ```
 
 ## Privacy and notes
@@ -167,6 +167,7 @@ GitHub Actions ([`.github/workflows/build.yml`](.github/workflows/build.yml)) bu
 
 ## Versions
 
+- **1.5.** Install with Homebrew (`brew install --cask nullifye/aayra/aayra`). The panel and Settings window open without taking focus from the app you're using, and switching apps closes the panel.
 - **1.4.** Optional update check against GitHub Releases (off by default). GPU card and detail panel (off by default). External drives and other volumes in Storage, with eject. Global keyboard shortcut (⌥⌘M by default) to open the panel. Top Processes rows expand to show an app's individual processes (one at a time). Detail panels respond to the first click and scroll when taller than the screen.
 - **1.3.** Quick-action buttons in detail panels (Manage Storage, Battery and Wi-Fi settings, Activity Monitor), processes grouped under their app's real name, live disk read/write speed, VPN indicator, optional network speed in the menu bar, author and links in Settings, scrolling detail panels on small screens, and charts and background refreshes that follow the refresh-rate setting.
 - **1.2.** Floating dashboard with big numbers, click-to-open detail panels, Settings window, SSD SMART health, deep battery details, redesigned per-core view, Control Center–style visuals.

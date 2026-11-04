@@ -5,6 +5,13 @@ import SwiftUI
 /// Which card's detail panel is open.
 enum DetailKind: Hashable { case cpu, storage, memory, battery, network }
 
+/// A button in a detail panel's header, e.g. "Manage Storage…".
+struct DetailAction {
+    let title: String
+    let symbol: String
+    let perform: @MainActor () -> Void
+}
+
 /// Side panel shown next to the main panel when a card is clicked: a header, then grouped
 /// sections in two equal columns (one column would outgrow a laptop screen).
 struct DetailPanel<Leading: View, Trailing: View>: View {
@@ -12,8 +19,15 @@ struct DetailPanel<Leading: View, Trailing: View>: View {
     let tint: Color
     let title: String
     var subtitle: String?
+    var actions: [DetailAction] = []
     @ViewBuilder var leading: () -> Leading
     @ViewBuilder var trailing: () -> Trailing
+
+    #if DEBUG
+    @Environment(\.isSnapshot) private var isSnapshot
+    #else
+    private let isSnapshot = false
+    #endif
 
     /// Natural height of the two columns, measured as they lay out.
     @State private var columnsHeight: CGFloat = 0
@@ -49,6 +63,17 @@ struct DetailPanel<Leading: View, Trailing: View>: View {
                 }
             }
             Spacer(minLength: 0)
+            if !isSnapshot {   // AppKit controls can't be drawn in offscreen screenshots
+                HStack(spacing: 6) {
+                    ForEach(actions.indices, id: \.self) { index in
+                        let action = actions[index]
+                        Button { action.perform() } label: {
+                            Label(action.title, systemImage: action.symbol)
+                        }
+                        .buttonStyle(.bordered)
+                    }
+                }
+            }
         }
     }
 
@@ -163,13 +188,23 @@ struct ProcessRow: View {
     let value: String
     let fraction: Double
     let tint: Color
+    /// How many processes are added together under this name (an app and its helpers).
+    var count = 1
 
     var body: some View {
         VStack(spacing: 3) {
-            HStack(spacing: 8) {
+            HStack(spacing: 4) {
                 Text(name)
                     .lineLimit(1)
                     .truncationMode(.tail)
+                if count > 1 {
+                    Text("\(count)")
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 5)
+                        .background(.quaternary, in: Capsule())
+                        .help("\(count) processes")
+                }
                 Spacer(minLength: 8)
                 Text(value)
                     .monospacedDigit()
@@ -179,6 +214,9 @@ struct ProcessRow: View {
             UsageBar(fraction: max(fraction, 0.01), color: tint, height: 4)
         }
         .font(.body)
+        .contentShape(Rectangle())
+        .onTapGesture { SystemActions.openActivityMonitor() }
+        .help("Open Activity Monitor")
     }
 }
 
@@ -203,7 +241,8 @@ struct CPUDetail: View {
 
     var body: some View {
         let cpu = monitor.cpu
-        DetailPanel(symbol: "cpu", tint: Palette.cpu, title: "CPU", subtitle: subtitle) {
+        DetailPanel(symbol: "cpu", tint: Palette.cpu, title: "CPU", subtitle: subtitle,
+                    actions: [.activityMonitor]) {
             DetailSection("Usage") {
                 Sparkline(values: monitor.cpuHistory, color: Palette.cpu, height: 34)
                     .padding(.vertical, 2)
@@ -255,9 +294,9 @@ struct CPUDetail: View {
             if monitor.topCPUProcesses.isEmpty {
                 EmptyRow(text: "Measuring…")
             } else {
-                ForEach(monitor.topCPUProcesses, id: \.name) { process in
+                ForEach(monitor.topCPUProcesses) { process in
                     ProcessRow(name: process.name, value: String(format: "%.1f%%", process.percent),
-                               fraction: process.percent / 100, tint: Palette.cpu)
+                               fraction: process.percent / 100, tint: Palette.cpu, count: process.count)
                 }
             }
         }
@@ -338,11 +377,16 @@ private struct CoreCluster: View {
 // MARK: - Storage
 
 struct StorageDetail: View {
-    let disk: DiskStats
-    let ssd: SSDHealth?
+    let monitor: SystemMonitor
+    private var disk: DiskStats { monitor.disk }
+    private var ssd: SSDHealth? { monitor.ssd }
 
     var body: some View {
-        DetailPanel(symbol: "internaldrive.fill", tint: Palette.storage, title: "Storage", subtitle: subtitle) {
+        let io = monitor.diskIO
+        DetailPanel(symbol: "internaldrive.fill", tint: Palette.storage, title: "Storage", subtitle: subtitle,
+                    actions: [DetailAction(title: "Manage Storage…", symbol: "gearshape") {
+                        SystemActions.openSettings(.storage)
+                    }]) {
             DetailSection("Space") {
                 StackedBar(segments: [
                     .init(value: share(disk.used), color: Palette.storage),
@@ -355,10 +399,16 @@ struct StorageDetail: View {
                 DetailRow("Available", Format.diskBytes(disk.available))
                 DetailRow("Total", Format.diskBytes(disk.total))
             }
-            DetailSection("Volume") {
-                DetailRow("Name", disk.volumeName)
-                if let format = disk.fileSystem { DetailRow("Format", format) }
-                if let encrypted = disk.isEncrypted { DetailRow("FileVault", onOff(encrypted)) }
+            DetailSection("Disk Activity") {
+                DualSparkline(download: monitor.diskReadHistory, upload: monitor.diskWriteHistory, height: 34)
+                    .padding(.vertical, 2)
+                DetailRow("Read", Format.rate(io.readBytesPerSec), dot: Palette.diskRead)
+                DetailRow("Write", Format.rate(io.writeBytesPerSec), dot: Palette.diskWrite)
+                let span = Format.span(monitor.historySpan)
+                DetailRow("Peak read (\(span))", Format.rate(monitor.diskReadHistory.max() ?? 0))
+                DetailRow("Peak write (\(span))", Format.rate(monitor.diskWriteHistory.max() ?? 0))
+                DetailRow("Read since boot", Format.diskBytes(Int64(clamping: io.totalRead)))
+                DetailRow("Written since boot", Format.diskBytes(Int64(clamping: io.totalWritten)))
             }
             if let ssd {
                 DetailSection("Lifetime I/O") {
@@ -390,6 +440,11 @@ struct StorageDetail: View {
             } else {
                 DetailSection("Drive") { EmptyRow(text: "SMART data unavailable") }
             }
+            DetailSection("Volume") {
+                DetailRow("Name", disk.volumeName)
+                if let format = disk.fileSystem { DetailRow("Format", format) }
+                if let encrypted = disk.isEncrypted { DetailRow("FileVault", onOff(encrypted)) }
+            }
         }
     }
 
@@ -409,7 +464,8 @@ struct MemoryDetail: View {
     let topProcesses: [ProcessMemory]
 
     var body: some View {
-        DetailPanel(symbol: "memorychip", tint: Palette.memory, title: "Memory", subtitle: subtitle) {
+        DetailPanel(symbol: "memorychip", tint: Palette.memory, title: "Memory", subtitle: subtitle,
+                    actions: [.activityMonitor]) {
             DetailSection("Usage") {
                 StackedBar(segments: [
                     .init(value: share(memory.app), color: Palette.memory),
@@ -434,7 +490,8 @@ struct MemoryDetail: View {
                 if let level = memory.freePercent { DetailRow("Memory level", "\(level)% free") }
                 DetailRow("Swap used", memory.swapTotal == 0 ? "None"
                           : "\(Format.bytes(memory.swapUsed)) of \(Format.bytes(memory.swapTotal))")
-                DetailRow("Swap-ins · outs", "\(count(memory.swapIns)) · \(count(memory.swapOuts))")
+                DetailRow("Swap-ins", count(memory.swapIns))
+                DetailRow("Swap-outs", count(memory.swapOuts))
             }
         } trailing: {
             DetailSection("Activity") {
@@ -447,9 +504,9 @@ struct MemoryDetail: View {
                 if topProcesses.isEmpty {
                     EmptyRow(text: "Measuring…")
                 } else {
-                    ForEach(topProcesses, id: \.name) { process in
+                    ForEach(topProcesses) { process in
                         ProcessRow(name: process.name, value: Format.bytes(process.footprint),
-                                   fraction: share(process.footprint), tint: Palette.memory)
+                                   fraction: share(process.footprint), tint: Palette.memory, count: process.count)
                     }
                 }
             }
@@ -472,7 +529,10 @@ struct BatteryDetail: View {
     let lowPowerMode: Bool
 
     var body: some View {
-        DetailPanel(symbol: battery.symbol, tint: battery.tint, title: "Battery", subtitle: subtitle) {
+        DetailPanel(symbol: battery.symbol, tint: battery.tint, title: "Battery", subtitle: subtitle,
+                    actions: [DetailAction(title: "Battery Settings…", symbol: "gearshape") {
+                        SystemActions.openSettings(.battery)
+                    }]) {
             chargeSection
             healthSection
             packSection
@@ -585,8 +645,12 @@ struct NetworkDetail: View {
     var body: some View {
         let net = monitor.network
         let info = monitor.networkDetails
+        let isWiFi = net.interfaceKind == "Wi-Fi"
         DetailPanel(symbol: net.symbol, tint: net.isConnected ? Palette.network : .gray,
-                    title: "Network", subtitle: subtitle) {
+                    title: "Network", subtitle: subtitle,
+                    actions: [DetailAction(title: isWiFi ? "Wi-Fi Settings…" : "Network Settings…", symbol: "gearshape") {
+                        SystemActions.openSettings(isWiFi ? .wifi : .network)
+                    }]) {
             DetailSection("Traffic") {
                 DualSparkline(download: monitor.downloadHistory, upload: monitor.uploadHistory, height: 34)
                     .padding(.vertical, 2)
@@ -599,6 +663,12 @@ struct NetworkDetail: View {
             if let interface = net.interfaceName {
                 DetailSection("Connection") {
                     DetailRow("Interface", "\(net.interfaceKind) (\(interface))")
+                    if let vpn = net.vpnInterface {
+                        DetailRow("VPN", "Connected (\(vpn))", dot: .green)
+                        if let address = net.vpnAddress { DetailRow("VPN address", address, placeholder: "10.8.0.2") }
+                    } else {
+                        DetailRow("VPN", "Off")
+                    }
                     if let mac = info.macAddress { DetailRow("MAC address", mac, placeholder: "a1:b2:c3:d4:e5:f6") }
                     if info.wifi == nil, let speed = info.linkSpeedMbps {
                         DetailRow("Link speed", speed >= 1000 ? "\(speed / 1000) Gbps" : "\(speed) Mbps")
@@ -659,6 +729,12 @@ struct NetworkDetail: View {
 }
 
 // MARK: - Shared helpers (used by the cards and the detail panels)
+
+extension DetailAction {
+    static let activityMonitor = DetailAction(title: "Activity Monitor", symbol: "waveform.path.ecg") {
+        SystemActions.openActivityMonitor()
+    }
+}
 
 extension ProcessInfo.ThermalState {
     var label: String {

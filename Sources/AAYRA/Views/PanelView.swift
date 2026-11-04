@@ -38,9 +38,9 @@ struct PanelView: View {
     }
 
     private var storageCard: some View {
-        StorageCard(disk: monitor.disk, ssd: monitor.ssd)
+        StorageCard(disk: monitor.disk, io: monitor.diskIO)
             .detailPopover(.storage, selection: $openDetail, edge: detailEdge, tint: Palette.storage) {
-                StorageDetail(disk: monitor.disk, ssd: monitor.ssd)
+                StorageDetail(monitor: monitor)
             }
     }
 
@@ -133,7 +133,7 @@ private struct CPUCard: View {
 
 private struct StorageCard: View {
     let disk: DiskStats
-    let ssd: SSDHealth?
+    let io: DiskIO
 
     var body: some View {
         Card(symbol: "internaldrive.fill", tint: Palette.storage) {
@@ -147,6 +147,12 @@ private struct StorageCard: View {
                 Stat(label: "Used", value: Format.diskShort(disk.used), dot: Palette.storage),
                 Stat(label: "Purge.", value: Format.diskShort(disk.purgeable), dot: Palette.storagePurgeable),
                 Stat(label: "Total", value: Format.diskShort(disk.total)),
+            ])
+            // Live disk activity, in the same columns as the line above.
+            StatRow(stats: [
+                Stat(label: "Read", value: Format.compactRate(io.readBytesPerSec), dot: Palette.diskRead),
+                Stat(label: "Write", value: Format.compactRate(io.writeBytesPerSec), dot: Palette.diskWrite),
+                Stat(label: "", value: ""),
             ])
         }
     }
@@ -252,6 +258,16 @@ private struct NetworkCard: View {
                     .help(monitor.wifiAccess == .denied
                           ? "Allow Location Services in System Settings to show the Wi-Fi name"
                           : "Show the Wi-Fi name (macOS asks for Location Services access)")
+                }
+                if net.isVPNConnected {
+                    Text("VPN")
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 1)
+                        .background(Palette.network.gradient, in: Capsule())
+                        .help("VPN connected (\(net.vpnInterface ?? ""))")
+                        .accessibilityLabel("VPN connected")
                 }
             }
             Spacer(minLength: 6)

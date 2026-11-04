@@ -11,14 +11,14 @@ Native Swift and SwiftUI · Apple Silicon · macOS 15 or later · under 1 MB
 
 ## Highlights
 
-- 🌀 **Live turbine in the menu bar.** It spins slowly when the Mac is idle and speeds up with CPU load, adding motion blur above 80 %. With Reduce Motion on (or the animation turned off), it shows the CPU % as text instead.
+- 🌀 **Live turbine in the menu bar.** It spins slowly when the Mac is idle and speeds up with CPU load, adding motion blur above 80 %. With Reduce Motion on (or the animation turned off), it shows the CPU % as text instead. You can also add live ↑/↓ network speed as a second, compact menu bar item.
 - 🗂 **Floating dashboard.** Cards float under the menu bar like Notification Center, on Liquid Glass in macOS 26 and later. Each card shows one big number with a bar or live chart.
-- 🔎 **Details on click.** Click a card and a two-column detail panel opens beside it, on whichever side has room. The numbers update every second, and you can select and copy any value.
+- 🔎 **Details on click.** Click a card and a two-column detail panel opens beside it, on whichever side has room. The numbers update live, and you can select and copy any value. Header buttons jump straight to the right place: **Manage Storage…**, **Battery Settings…**, **Wi-Fi/Network Settings…** or **Activity Monitor**.
 - 🔋 **Deep battery info.** Health and condition (matching System Settings), cycles, full-charge vs design capacity, live watts, voltage and current, per-cell voltages, adapter, and lifetime records (temperature range, peak currents, operating hours). It also shows who assembled the pack and who made the cells (e.g. Sunwoda / ATL), plus the estimated manufacture date and age.
-- 💾 **SSD health.** NVMe SMART data: health %, spare capacity, temperature, power-on hours, unsafe shutdowns, media errors, and total data written and read.
-- 🧠 **CPU and memory.** Usage history, per-core load grouped by Performance and Efficiency cores, chip and cache details, thermal state, and top processes by CPU and by memory. Memory shows app / wired / compressed / cached, pressure and swap.
-- 🌐 **Network.** Live ↓/↑ speed chart, Wi-Fi name, signal, noise and SNR, channel and band, standard, security, local and public IP (click to copy), router, DNS and MAC.
-- ⚙️ **Settings.** Launch at Login, icon animation and CPU % in the menu bar, which cards to show, refresh rate (1, 2 or 5 s), temperature unit, and an opt-out for the public IP lookup.
+- 💾 **Storage and SSD health.** Live disk read/write speed with a chart. NVMe SMART data: health %, spare capacity, temperature, power-on hours, unsafe shutdowns, media errors, and total data written and read.
+- 🧠 **CPU and memory.** Usage history, per-core load grouped by Performance and Efficiency cores, chip and cache details, thermal state, and top processes by CPU and by memory. Helper processes are added up under their app's real name (e.g. *Visual Studio Code · 16*), like Activity Monitor. Memory shows app / wired / compressed / cached, pressure and swap.
+- 🌐 **Network.** Live ↓/↑ speed chart, Wi-Fi name, signal, noise and SNR, channel and band, standard, security, local and public IP (click to copy), router, DNS and MAC. A **VPN** badge appears while a VPN is connected.
+- ⚙️ **Settings.** Launch at Login, icon animation, CPU % and network speed in the menu bar, which cards to show, refresh rate (1, 2 or 5 s), temperature unit, and an opt-out for the public IP lookup.
 - 🪶 **Light.** About 2–4 % CPU while idling in the menu bar, and the whole app is under 1 MB.
 
 ## Install
@@ -69,6 +69,7 @@ The animation frames, sharp (top row) and with motion blur under heavy load (bot
 | Open the dashboard | Click the turbine in the menu bar |
 | Show details | Click any card. Click it again, or anywhere else, to close |
 | Copy an IP address | Click it (it turns bold for a moment) |
+| Open Activity Monitor | Click any process in a CPU or Memory detail panel |
 | Settings | Gear button in the footer, ⌘, or right-click the turbine |
 | Close | Click outside, press Esc, or click the turbine |
 | Quit | Power button in the footer, ⌘Q, or right-click the turbine |
@@ -118,4 +119,5 @@ GitHub Actions ([`.github/workflows/build.yml`](.github/workflows/build.yml)) bu
 
 ## Versions
 
+- **1.3.** Quick-action buttons in detail panels (Manage Storage, Battery and Wi-Fi settings, Activity Monitor), processes grouped under their app's real name, live disk read/write speed, VPN indicator, optional network speed in the menu bar, author and links in Settings, scrolling detail panels on small screens, and charts and background refreshes that follow the refresh-rate setting.
 - **1.2.** Floating dashboard with big numbers, click-to-open detail panels, Settings window, SSD SMART health, deep battery details, redesigned per-core view, Control Center–style visuals.

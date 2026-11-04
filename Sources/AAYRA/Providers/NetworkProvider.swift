@@ -14,7 +14,10 @@ struct NetworkStats: Equatable {
     var isExpensive = false             // e.g. iPhone hotspot
     var isConstrained = false           // Low Data Mode
     var supportsIPv6 = false
+    var vpnInterface: String?           // e.g. "utun4" while a VPN is connected
+    var vpnAddress: String?             // the tunnel's IPv4 address
     var isConnected: Bool { interfaceName != nil }
+    var isVPNConnected: Bool { vpnInterface != nil }
 }
 
 /// Throughput from 64-bit interface counters, primary interface from NWPathMonitor.
@@ -49,6 +52,10 @@ final class NetworkProvider: @unchecked Sendable {
         stats.interfaceKind = primary?.kind ?? "Offline"
         if let name = primary?.name {
             (stats.localIPv4, stats.localIPv6) = Self.addresses(for: name)
+        }
+        if let tunnel = Self.vpnTunnel() {
+            stats.vpnInterface = tunnel.name
+            stats.vpnAddress = tunnel.address
         }
 
         let now = ProcessInfo.processInfo.systemUptime
@@ -103,6 +110,30 @@ final class NetworkProvider: @unchecked Sendable {
             }
         }
         return (rx, tx)
+    }
+
+    /// A connected VPN shows up as a tunnel interface (utun, ipsec, ppp, …) that is up and has an
+    /// IPv4 address. macOS keeps a few utun interfaces for its own services, but those only carry
+    /// IPv6 link-local addresses, so they're not mistaken for a VPN.
+    private static func vpnTunnel() -> (name: String, address: String)? {
+        var head: UnsafeMutablePointer<ifaddrs>?
+        guard getifaddrs(&head) == 0, let first = head else { return nil }
+        defer { freeifaddrs(head) }
+
+        let prefixes = ["utun", "ipsec", "ppp", "tun", "tap", "wg"]
+        let upAndRunning = Int32(IFF_UP | IFF_RUNNING)
+        for ptr in sequence(first: first, next: { $0.pointee.ifa_next }) {
+            let ifa = ptr.pointee
+            let name = String(cString: ifa.ifa_name)
+            guard let addr = ifa.ifa_addr, Int32(addr.pointee.sa_family) == AF_INET,
+                  Int32(ifa.ifa_flags) & upAndRunning == upAndRunning,
+                  prefixes.contains(where: name.hasPrefix) else { continue }
+            var host = [CChar](repeating: 0, count: Int(NI_MAXHOST))
+            guard getnameinfo(addr, socklen_t(MemoryLayout<sockaddr_in>.size), &host, socklen_t(host.count),
+                              nil, 0, NI_NUMERICHOST) == 0 else { continue }
+            return (name, String(cString: host))
+        }
+        return nil
     }
 
     private static func addresses(for interface: String) -> (String?, String?) {

@@ -33,6 +33,17 @@ enum Format {
         return String(format: "%.0f MB", bytes / 1_048_576)
     }
 
+    /// Short rate for the menu bar: "830 B/s", "45 KB/s", "1.2 MB/s" (decimal units, like `rate`).
+    static func compactRate(_ bytesPerSecond: Double) -> String {
+        let v = max(0, bytesPerSecond)
+        switch v {
+        case ..<1_000: return "\(Int(v)) B/s"
+        case ..<1_000_000: return String(format: "%.0f KB/s", v / 1_000)
+        case ..<10_000_000_000: return String(format: "%.1f MB/s", v / 1_000_000)
+        default: return String(format: "%.1f GB/s", v / 1_000_000_000)
+        }
+    }
+
     static func rate(_ bytesPerSecond: Double) -> String {
         let value = Int64(max(0, bytesPerSecond))
         return value.formatted(.byteCount(style: .decimal, spellsOutZero: false)) + "/s"

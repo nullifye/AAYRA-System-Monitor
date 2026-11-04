@@ -41,6 +41,10 @@ final class StatusItemController: NSObject {
     private var eventMonitors: [Any] = []
     private var panelGeneration = 0
     private lazy var contextMenu: NSMenu = makeContextMenu()
+    /// Optional second menu bar item with live network speed (Settings → Menu Bar).
+    private var networkItem: NSStatusItem?
+    private var lastNetworkText = ""
+    private static let networkItemLength: CGFloat = 60
 
     private var frameTimer: Timer?
     private var angle = 0.0
@@ -119,7 +123,42 @@ final class StatusItemController: NSObject {
             statusItem.button?.image = SpinnerFrames.frame(at: 0, blurred: false)
         }
         updateLabel()
+        updateNetworkItem()
         scheduleNextFrame()
+    }
+
+    /// Shows, updates or removes the network speed item. Runs with the animation timer (at least once a
+    /// second) but only redraws when the text changes; a fixed width keeps the menu bar from shifting.
+    private func updateNetworkItem() {
+        guard AppSettings.showNetworkInMenuBar else {
+            if let item = networkItem {
+                NSStatusBar.system.removeStatusItem(item)
+                networkItem = nil
+                lastNetworkText = ""
+            }
+            return
+        }
+        let item = networkItem ?? makeNetworkItem()
+        let net = monitor.network
+        let up = Format.compactRate(net.uploadBytesPerSec), down = Format.compactRate(net.downloadBytesPerSec)
+        let text = up + "|" + down
+        guard text != lastNetworkText, let button = item.button else { return }
+        lastNetworkText = text
+        button.image = NetworkSpeedImage.make(up: up, down: down, width: Self.networkItemLength - 4)
+        button.setAccessibilityLabel("Network: upload \(up), download \(down)")
+    }
+
+    private func makeNetworkItem() -> NSStatusItem {
+        let item = NSStatusBar.system.statusItem(withLength: Self.networkItemLength)
+        item.autosaveName = "AAYRANetworkSpeed"   // remembers where the user ⌘-drags it
+        if let button = item.button {
+            button.imagePosition = .imageOnly
+            button.target = self
+            button.action = #selector(handleClick(_:))
+            button.sendAction(on: [.leftMouseUp, .rightMouseUp])
+        }
+        networkItem = item
+        return item
     }
 
     private func updateLabel() {
@@ -160,9 +199,10 @@ final class StatusItemController: NSObject {
     @objc private func handleClick(_ sender: NSStatusBarButton) {
         if NSApp.currentEvent?.type == .rightMouseUp {
             closePanel()
-            statusItem.menu = contextMenu
+            let item = sender == networkItem?.button ? networkItem! : statusItem
+            item.menu = contextMenu
             sender.performClick(nil)       // shows the menu
-            statusItem.menu = nil          // restore left-click → panel
+            item.menu = nil                // restore left-click → panel
         } else if panel.isVisible {
             closePanel()
         } else {
@@ -234,7 +274,8 @@ final class StatusItemController: NSObject {
                 guard let self else { return }
                 // The click that opened the panel can reach this monitor too (the menu bar is drawn by
                 // another process); clicks on our own icon are handled by the button instead.
-                if let iconFrame = self.statusItem.button?.window?.frame, iconFrame.contains(location) { return }
+                let icons = [self.statusItem.button?.window?.frame, self.networkItem?.button?.window?.frame]
+                if icons.contains(where: { $0?.contains(location) == true }) { return }
                 self.closePanel()
             }
         }) {
@@ -250,6 +291,7 @@ final class StatusItemController: NSObject {
                 if isEscape { self.closePanel(); return true }
                 if isKey { return false }
                 let isOurs = window != nil && (window == self.panel || window == self.statusItem.button?.window
+                    || window == self.networkItem?.button?.window
                     || (self.panel.childWindows ?? []).contains(window!))
                 if !isOurs { self.closePanel() }
                 return false
@@ -294,7 +336,45 @@ final class StatusItemController: NSObject {
     @objc private func openSettings() { SettingsWindow.show() }
 }
 
+/// Two-line upload/download text for the menu bar, drawn as a template image so it follows
+/// light, dark and tinted menu bars.
+enum NetworkSpeedImage {
+    static func make(up: String, down: String, width: CGFloat) -> NSImage {
+        let font = NSFont.monospacedDigitSystemFont(ofSize: 9, weight: .semibold)
+        let right = NSMutableParagraphStyle()
+        right.alignment = .right
+        let value: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: NSColor.black, .paragraphStyle: right]
+        let arrow: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: NSColor.black]
+        let image = NSImage(size: NSSize(width: width, height: 22), flipped: false) { rect in
+            let lineHeight: CGFloat = 11
+            for (row, (symbol, text)) in [("↑", up), ("↓", down)].enumerated() {
+                let y = row == 0 ? lineHeight : 0
+                (symbol as NSString).draw(at: NSPoint(x: 0, y: y), withAttributes: arrow)
+                (text as NSString).draw(in: NSRect(x: 9, y: y, width: rect.width - 9, height: lineHeight),
+                                        withAttributes: value)
+            }
+            return true
+        }
+        image.isTemplate = true
+        return image
+    }
+}
+
 enum SystemActions {
+    /// System Settings panes AAYRA links to.
+    enum SettingsPane: String {
+        case storage = "com.apple.settings.Storage"
+        case battery = "com.apple.Battery-Settings.extension"
+        case network = "com.apple.Network-Settings.extension"
+        case wifi = "com.apple.wifi-settings-extension"
+    }
+
+    @MainActor static func openSettings(_ pane: SettingsPane) {
+        if let url = URL(string: "x-apple.systempreferences:\(pane.rawValue)") {
+            NSWorkspace.shared.open(url)
+        }
+    }
+
     @MainActor static func openActivityMonitor() {
         if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.ActivityMonitor") {
             NSWorkspace.shared.openApplication(at: url, configuration: .init())

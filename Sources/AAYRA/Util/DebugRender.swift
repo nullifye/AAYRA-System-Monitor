@@ -23,7 +23,7 @@ enum DebugRender {
         // Detail panels drawn as they appear in their popover.
         var details: [(String, AnyView)] = [
             ("cpu", AnyView(CPUDetail(monitor: monitor))),
-            ("storage", AnyView(StorageDetail(disk: monitor.disk, ssd: monitor.ssd))),
+            ("storage", AnyView(StorageDetail(monitor: monitor))),
             ("memory", AnyView(MemoryDetail(memory: monitor.memory, topProcesses: monitor.topProcesses))),
             ("network", AnyView(NetworkDetail(monitor: monitor))),
         ]
@@ -55,6 +55,23 @@ enum DebugRender {
             .background(wallpaper)
             render(hero, scheme: scheme, to: name("hero", scheme))
         }
+
+        // Menu bar network speed item, drawn black on a light bar and white on a dark bar (as macOS tints templates).
+        let speed = NetworkSpeedImage.make(up: "45 KB/s", down: "12.4 MB/s", width: 56)
+        let bar = NSImage(size: NSSize(width: 140, height: 30), flipped: false) { _ in
+            NSColor(white: 0.92, alpha: 1).setFill(); NSRect(x: 0, y: 0, width: 70, height: 30).fill()
+            NSColor(white: 0.15, alpha: 1).setFill(); NSRect(x: 70, y: 0, width: 70, height: 30).fill()
+            speed.draw(in: NSRect(x: 7, y: 4, width: 56, height: 22))
+            if let white = speed.copy() as? NSImage {
+                white.lockFocus()
+                NSColor.white.set()
+                NSRect(origin: .zero, size: white.size).fill(using: .sourceAtop)
+                white.unlockFocus()
+                white.draw(in: NSRect(x: 77, y: 4, width: 56, height: 22))
+            }
+            return true
+        }
+        write(bar, to: dir.appendingPathComponent("menubar-network.png"), scale: 4)
 
         // Spinner strip: every 3rd frame, sharp then blurred, black on white.
         let frames = stride(from: 0, to: SpinnerFrames.frameCount, by: 3).map { $0 }

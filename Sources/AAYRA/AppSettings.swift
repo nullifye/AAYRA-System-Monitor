@@ -6,6 +6,7 @@ enum AppSettings {
     enum Key {
         static let animateIcon = "animateIcon"
         static let showPercentInMenuBar = "showPercentInMenuBar"
+        static let showNetworkInMenuBar = "showNetworkInMenuBar"
         static let refreshInterval = "refreshInterval"
         static let fetchPublicIP = "fetchPublicIP"
         static let temperatureUnit = "temperatureUnit"
@@ -24,6 +25,7 @@ enum AppSettings {
 
     static var animateIcon: Bool { bool(Key.animateIcon, default: true) }
     static var showPercentInMenuBar: Bool { bool(Key.showPercentInMenuBar, default: false) }
+    static var showNetworkInMenuBar: Bool { bool(Key.showNetworkInMenuBar, default: false) }
     static var fetchPublicIP: Bool { bool(Key.fetchPublicIP, default: true) }
 
     /// Seconds between readings: 1, 2 or 5.

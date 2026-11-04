@@ -29,6 +29,7 @@ enum SettingsWindow {
 struct SettingsView: View {
     @AppStorage(AppSettings.Key.animateIcon) private var animateIcon = true
     @AppStorage(AppSettings.Key.showPercentInMenuBar) private var showPercent = false
+    @AppStorage(AppSettings.Key.showNetworkInMenuBar) private var showNetworkSpeed = false
     @AppStorage(AppSettings.Key.refreshInterval) private var refreshInterval = 1.0
     @AppStorage(AppSettings.Key.temperatureUnit) private var temperatureUnit = AppSettings.TemperatureUnit.system.rawValue
     @AppStorage(AppSettings.Key.fetchPublicIP) private var fetchPublicIP = true
@@ -82,10 +83,11 @@ struct SettingsView: View {
                     set: { showPercent = $0 }
                 ))
                 .disabled(!animateIcon)
+                Toggle("Show network speed", isOn: $showNetworkSpeed)
             } header: {
                 Text("Menu Bar")
             } footer: {
-                Text("The turbine spins faster as CPU load rises. With the animation off, the CPU percentage is always shown.")
+                Text("The turbine spins faster as CPU load rises. With the animation off, the CPU percentage is always shown. Network speed appears as a separate item you can ⌘-drag.")
                     .foregroundStyle(.secondary)
             }
 

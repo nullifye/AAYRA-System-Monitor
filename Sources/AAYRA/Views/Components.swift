@@ -12,6 +12,8 @@ enum Palette {
     static let network = Color.teal
     static let download = Color.blue
     static let upload = Color.orange
+    static let diskRead = Color.blue
+    static let diskWrite = Color.orange
 
     // Stacked-bar segments
     static let storagePurgeable = Color.purple.opacity(0.4)

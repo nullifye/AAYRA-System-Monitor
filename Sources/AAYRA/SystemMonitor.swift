@@ -26,6 +26,9 @@ final class SystemMonitor {
     private(set) var network = NetworkStats()
     private(set) var downloadHistory: [Double] = Array(repeating: 0, count: historyLength)
     private(set) var uploadHistory: [Double] = Array(repeating: 0, count: historyLength)
+    private(set) var diskIO = DiskIO()
+    private(set) var diskReadHistory: [Double] = Array(repeating: 0, count: historyLength)
+    private(set) var diskWriteHistory: [Double] = Array(repeating: 0, count: historyLength)
 
     private(set) var wifiName: String?
     private(set) var networkDetails = NetworkDetails()
@@ -40,6 +43,7 @@ final class SystemMonitor {
 
     private let cpuProvider = CPUProvider()
     private let networkProvider = NetworkProvider()
+    private let diskIOProvider = DiskIOProvider()
     private let wifiProvider = WiFiNameProvider()
     // When each periodic job last ran (system uptime, seconds). Jobs run on elapsed time, not on
     // sample counts, so they keep their schedule whatever the refresh interval is.
@@ -62,6 +66,7 @@ final class SystemMonitor {
         efficiencyCores = cpuProvider.efficiencyCores
         _ = cpuProvider.sample()            // prime the tick baseline
         _ = networkProvider.sample()
+        _ = diskIOProvider.sample()
         refreshSlowMetrics()
         refreshSSD()
         lastHealthRefresh = Self.now
@@ -95,6 +100,8 @@ final class SystemMonitor {
             cpuHistory = Array(repeating: 0, count: Self.historyLength)
             downloadHistory = Array(repeating: 0, count: Self.historyLength)
             uploadHistory = Array(repeating: 0, count: Self.historyLength)
+            diskReadHistory = Array(repeating: 0, count: Self.historyLength)
+            diskWriteHistory = Array(repeating: 0, count: Self.historyLength)
         }
 
         if let sample = cpuProvider.sample() {
@@ -113,6 +120,9 @@ final class SystemMonitor {
         network = networkProvider.sample()
         push(&downloadHistory, network.downloadBytesPerSec)
         push(&uploadHistory, network.uploadBytesPerSec)
+        diskIO = diskIOProvider.sample()
+        push(&diskReadHistory, diskIO.readBytesPerSec)
+        push(&diskWriteHistory, diskIO.writeBytesPerSec)
         if network.interfaceName != previousInterface {   // network changed
             publicIPFetchedAt = nil
             refreshWiFiName()

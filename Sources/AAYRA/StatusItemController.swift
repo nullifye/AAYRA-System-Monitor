@@ -154,6 +154,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     func popoverDidClose(_ notification: Notification) {
         statusItem.button?.highlight(false)
         popover.contentViewController = nil
+        monitor.panelDidClose()
     }
 
     private func makeContextMenu() -> NSMenu {

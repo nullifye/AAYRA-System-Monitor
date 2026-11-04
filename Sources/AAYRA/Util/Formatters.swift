@@ -34,6 +34,15 @@ enum Format {
         return h > 0 ? "\(h)h \(m)m" : "\(m)m"
     }
 
+    /// "1y 9m", "4m", "12d" — rough age for things like battery packs.
+    static func age(since date: Date) -> String {
+        let parts = Calendar.current.dateComponents([.year, .month, .day], from: date, to: Date())
+        let y = parts.year ?? 0, m = parts.month ?? 0, d = parts.day ?? 0
+        if y > 0 { return m > 0 ? "\(y)y \(m)m" : "\(y)y" }
+        if m > 0 { return "\(m)m" }
+        return "\(d)d"
+    }
+
     static func uptime(since date: Date?) -> String {
         guard let date else { return "—" }
         let seconds = Int(Date().timeIntervalSince(date))
@@ -53,4 +62,9 @@ enum Format {
     static func temperature(celsius: Double) -> String {
         temperatureFormatter.string(from: Measurement(value: celsius, unit: UnitTemperature.celsius))
     }
+}
+
+extension String {
+    /// "up 3h" → "Up 3h"
+    var capitalizedFirst: String { prefix(1).uppercased() + dropFirst() }
 }

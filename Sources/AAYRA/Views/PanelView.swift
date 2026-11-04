@@ -9,9 +9,9 @@ struct PanelView: View {
             HeaderView(monitor: monitor)
             CPUCard(monitor: monitor)
             StorageCard(disk: monitor.disk, ssd: monitor.ssd)
-            MemoryCard(memory: monitor.memory)
+            MemoryCard(memory: monitor.memory, topProcesses: monitor.topProcesses)
             if let battery = monitor.battery {
-                BatteryCard(battery: battery)
+                BatteryCard(battery: battery, lowPowerMode: monitor.isLowPowerMode)
             }
             NetworkCard(monitor: monitor)
             FooterView()
@@ -62,16 +62,76 @@ private struct CPUCard: View {
                 Stat(label: "Load", value: String(format: "%.2f", cpu.loadAverage.0))
                 Spacer(minLength: 0)
                 CoreBars(loads: cpu.perCore, tint: Palette.cpu)
-                    .help(coreSummary)
             }
         }
+        .help(tooltip)
     }
 
-    private var coreSummary: String {
+    /// Extra details shown when hovering the CPU card.
+    private var tooltip: String {
+        let cpu = monitor.cpu
+        func pct(_ v: Double) -> String { Format.percent(v) }
+        func kb(_ bytes: Int?) -> String? { bytes.map { "\($0 / 1024) KB" } }
+        func mb(_ bytes: Int?) -> String? { bytes.map { "\($0 / 1_048_576) MB" } }
+        var lines: [String] = []
+
+        lines.append("Chip: \(MachineInfo.chip)" + (ChipInfo.model.map { " · \($0)" } ?? ""))
         let p = monitor.performanceCores, e = monitor.efficiencyCores
-        let cores = p > 0 && e > 0 ? "\(p) Performance + \(e) Efficiency cores" : "\(monitor.cpu.perCore.count) cores"
-        let l = monitor.cpu.loadAverage
-        return cores + String(format: "\nLoad average %.2f · %.2f · %.2f", l.0, l.1, l.2)
+        var cores = p > 0 && e > 0 ? "\(p + e) CPU (\(p) Performance + \(e) Efficiency)" : "\(cpu.perCore.count) CPU"
+        if let gpu = ChipInfo.gpuCores { cores += " · \(gpu) GPU" }
+        lines.append("Cores: " + cores)
+        let pc = ChipInfo.performanceCache, ec = ChipInfo.efficiencyCache
+        if let pl2 = mb(pc.l2), let el2 = mb(ec.l2) {
+            lines.append("L2 cache: \(pl2) (P) · \(el2) (E)")
+        }
+        if let pi = kb(pc.l1i), let pd = kb(pc.l1d), let ei = kb(ec.l1i), let ed = kb(ec.l1d) {
+            lines.append("L1 cache: \(pi) + \(pd) (P) · \(ei) + \(ed) (E)  [instr + data, per core]")
+        }
+
+        lines.append("Usage: \(pct(cpu.total)) (user \(pct(cpu.user)) · system \(pct(cpu.system)) · "
+                     + "idle \(pct(max(0, 1 - cpu.total))))")
+        let clusters = ChipInfo.coreClusters
+        if clusters.count == cpu.perCore.count, !clusters.isEmpty {
+            func group(_ type: String) -> [Double] { zip(clusters, cpu.perCore).filter { $0.0 == type }.map(\.1) }
+            let pLoads = group("P"), eLoads = group("E")
+            func avg(_ v: [Double]) -> String { v.isEmpty ? "—" : pct(v.reduce(0, +) / Double(v.count)) }
+            func list(_ v: [Double]) -> String { v.map { String(Int(($0 * 100).rounded())) }.joined(separator: " ") }
+            lines.append("Performance cores: \(avg(pLoads)) avg  [\(list(pLoads))]")
+            lines.append("Efficiency cores: \(avg(eLoads)) avg  [\(list(eLoads))]")
+        }
+        let l = cpu.loadAverage
+        lines.append(String(format: "Load average: %.2f · %.2f · %.2f  (1 · 5 · 15 min)", l.0, l.1, l.2))
+        lines.append("Thermal state: " + thermalText)
+
+        var system: [String] = []
+        if monitor.processCount > 0 { system.append("\(monitor.processCount) processes") }
+        if let boot = monitor.bootDate {
+            system.append("up \(Format.uptime(since: boot)) (since \(boot.formatted(date: .abbreviated, time: .shortened)))")
+        }
+        if !system.isEmpty { lines.append(system.joined(separator: " · ").capitalizedFirst) }
+        if let kernel = ChipInfo.kernel {
+            lines.append("Kernel: Darwin \(kernel)" + (ChipInfo.build.map { " (\($0))" } ?? ""))
+        }
+
+        lines.append("Top processes:")
+        if monitor.topCPUProcesses.isEmpty {
+            lines.append("   Measuring…")
+        } else {
+            for process in monitor.topCPUProcesses {
+                lines.append("   \(process.name) — " + String(format: "%.1f%%", process.percent))
+            }
+        }
+        return lines.joined(separator: "\n")
+    }
+
+    private var thermalText: String {
+        switch monitor.thermalState {
+        case .nominal: "Nominal"
+        case .fair: "Fair (warm)"
+        case .serious: "Serious (throttling)"
+        case .critical: "Critical"
+        @unknown default: "Unknown"
+        }
     }
 }
 
@@ -118,11 +178,32 @@ private struct StorageCard: View {
         return ssd.health >= 0.8 ? .green : ssd.health >= 0.5 ? .orange : .red
     }
 
+    /// Extra details shown when hovering the storage card.
     private var tooltip: String {
-        guard let ssd else { return disk.volumeName }
-        let read = Format.diskShort(Int64(clamping: ssd.bytesRead))
-        return "\(disk.volumeName) · SSD \(ssd.condition)\n"
-            + "Read \(read) · Power-on \(ssd.powerOnHours) h · Spare \(ssd.availableSpare)%"
+        var lines: [String] = []
+        let volume = [disk.volumeName, disk.fileSystem,
+                      disk.isEncrypted.map { $0 ? "FileVault On" : "FileVault Off" }].compactMap { $0 }
+        lines.append("Volume: " + volume.joined(separator: " · "))
+        lines.append("Available: \(Format.diskBytes(disk.available)) "
+                     + "(free \(Format.diskBytes(disk.free)) + purgeable \(Format.diskBytes(disk.purgeable)))")
+
+        guard let ssd else { return lines.joined(separator: "\n") }
+        let info = ssd.info
+        let drive = [info.model, info.capacityBytes.map { Format.diskBytes($0) }, info.interconnect]
+            .compactMap { $0 }
+        if !drive.isEmpty { lines.append("Drive: " + drive.joined(separator: " · ")) }
+        if let serial = info.serial { lines.append("Serial: \(serial)") }
+        if let firmware = info.firmware { lines.append("Firmware: \(firmware)") }
+        lines.append("SSD health: \(Format.percent(ssd.health)) (\(ssd.condition)) · "
+                     + "Spare \(ssd.availableSpare)% (min \(ssd.availableSpareThreshold)%)")
+        if let t = ssd.temperatureC { lines.append("Temperature: \(Format.temperature(celsius: t))") }
+        lines.append("Data written: \(Format.diskShort(Int64(clamping: ssd.bytesWritten))) · "
+                     + "read \(Format.diskShort(Int64(clamping: ssd.bytesRead)))")
+        let days = Double(ssd.powerOnHours) / 24
+        lines.append("Power-on: \(ssd.powerOnHours.formatted()) h (\(Int(days.rounded())) days) · "
+                     + "\(ssd.powerCycles.formatted()) power cycles")
+        lines.append("Unsafe shutdowns: \(ssd.unsafeShutdowns.formatted()) · Media errors: \(ssd.mediaErrors.formatted())")
+        return lines.joined(separator: "\n")
     }
 
     private func share(_ bytes: Int64) -> Double {
@@ -134,6 +215,7 @@ private struct StorageCard: View {
 
 private struct MemoryCard: View {
     let memory: MemoryStats
+    let topProcesses: [ProcessMemory]
 
     var body: some View {
         Card(symbol: "memorychip", tint: Palette.memory) {
@@ -160,6 +242,31 @@ private struct MemoryCard: View {
                 }
             }
         }
+        .help(tooltip)
+    }
+
+    /// Extra details shown when hovering the memory card.
+    private var tooltip: String {
+        func count(_ n: UInt64) -> String { n.formatted(.number.notation(.compactName)) }
+        var lines: [String] = []
+        let hardware = [Format.bytes(memory.total), MemoryHardware.type, MemoryHardware.vendor].compactMap { $0 }
+        lines.append("Installed: " + hardware.joined(separator: " · "))
+        lines.append("Used: \(Format.bytes(memory.used)) (app \(Format.bytes(memory.app)) + wired "
+                     + "\(Format.bytes(memory.wired)) + compressed \(Format.bytes(memory.compressed)))")
+        lines.append("Cached files: \(Format.bytes(memory.cached)) · Free: \(Format.bytes(memory.free))")
+        lines.append("Pressure: \(pressureText.replacingOccurrences(of: " Pressure", with: ""))"
+                     + (memory.freePercent.map { " · \($0)% free (system memory level)" } ?? ""))
+        lines.append("Swap: \(Format.bytes(memory.swapUsed)) of \(Format.bytes(memory.swapTotal)) · "
+                     + "swap-ins \(count(memory.swapIns)) · swap-outs \(count(memory.swapOuts))")
+        lines.append("Compressions: \(count(memory.compressions)) · decompressions \(count(memory.decompressions))")
+        lines.append("Page-ins: \(count(memory.pageIns)) · page-outs \(count(memory.pageOuts))")
+        if !topProcesses.isEmpty {
+            lines.append("Top processes:")
+            for process in topProcesses {
+                lines.append("   \(process.name) — \(Format.bytes(process.footprint))")
+            }
+        }
+        return lines.joined(separator: "\n")
     }
 
     private func share(_ bytes: UInt64) -> Double {
@@ -191,6 +298,7 @@ private struct MemoryCard: View {
 
 private struct BatteryCard: View {
     let battery: BatteryStats
+    let lowPowerMode: Bool
 
     var body: some View {
         Card(symbol: symbol, tint: tint) {
@@ -200,7 +308,6 @@ private struct BatteryCard: View {
                     .init(value: (1 - battery.charge) * maxCapacity, color: .clear),
                     .init(value: 1 - maxCapacity, color: Palette.batteryWorn),
                 ])
-                .help("Bar length is the original design capacity; the grey end is capacity lost to wear.")
             }
         } details: {
             HStack(spacing: 10) {
@@ -221,6 +328,95 @@ private struct BatteryCard: View {
                 Stat(label: "Capacity", value: capacityText)
             }
         }
+        .help(hoverDetails)
+    }
+
+    /// Extra details shown when hovering the battery card.
+    private var hoverDetails: String {
+        func volts(_ mV: Int) -> String { String(format: "%.2f V", Double(mV) / 1000) }
+        func amps(_ mA: Int) -> String { String(format: "%.2f A", Double(abs(mA)) / 1000) }
+        var lines: [String] = []
+
+        if let date = battery.manufactureDate {
+            let when = date.formatted(.dateTime.day().month(.abbreviated).year())
+            let age = Format.age(since: date)
+            lines.append(battery.manufactureDateIsEstimate
+                         ? "Manufactured: ≈ \(when) (estimated) · Age ≈ \(age)"
+                         : "Manufactured: \(when) · Age \(age)")
+        }
+        lines.append("Manufacturer: \(battery.manufacturer ?? "Unknown")")
+        if let serial = battery.serial { lines.append("Serial: \(serial)") }
+        if let full = battery.fullChargeCapacity_mAh {
+            lines.append("Full charge capacity: \(full) mAh" + (battery.designCapacity_mAh.map { " (design \($0) mAh)" } ?? ""))
+        }
+        if let remaining = battery.remaining_mAh, let max = battery.rawMax_mAh {
+            lines.append("Remaining: \(remaining) of \(max) mAh")
+        }
+
+        var power: [String] = []
+        if let watts = battery.powerWatts, abs(watts) >= 0.05 {
+            let rate = String(format: "%.1f W", abs(watts))
+            power.append(watts < 0 ? "Discharging at \(rate)" : "Charging at \(rate)")
+        } else {
+            power.append("Battery idle (0 W)")
+        }
+        if let load = battery.systemLoadWatts { power.append(String(format: "Mac drawing %.1f W", load)) }
+        lines.append(power.joined(separator: " · "))
+
+        if let mV = battery.voltage_mV {
+            lines.append("Voltage: \(volts(mV))" + (battery.current_mA.map { " · Current: \($0) mA" } ?? ""))
+        }
+        if !battery.cellVoltages_mV.isEmpty {
+            let cells = battery.cellVoltages_mV.map { String(format: "%.3f", Double($0) / 1000) }.joined(separator: " / ")
+            let spread = (battery.cellVoltages_mV.max() ?? 0) - (battery.cellVoltages_mV.min() ?? 0)
+            lines.append("Cells: \(cells) V (spread \(spread) mV)")
+        }
+        if let low = battery.dailyMinSoc, let high = battery.dailyMaxSoc {
+            lines.append("Today's charge range: \(low)–\(high)%")
+        }
+        var adapter = "Power adapter: " + adapterStatus
+        if let input = battery.adapterInputWatts { adapter += String(format: " · drawing %.1f W", input) }
+        lines.append(adapter)
+        lines.append("Low Power Mode: " + (lowPowerMode ? "On" : "Off"))
+
+        // Lifetime record from the fuel gauge.
+        var lifetime: [String] = []
+        if let low = battery.lifetimeMinTempC, let high = battery.lifetimeMaxTempC {
+            lifetime.append("Temperature: \(low)–\(high) °C"
+                            + (battery.lifetimeAvgTempC.map { String(format: " (avg %.1f °C)", $0) } ?? ""))
+        }
+        if let charge = battery.maxChargeCurrent_mA, let discharge = battery.maxDischargeCurrent_mA {
+            lifetime.append("Peak current: charge \(amps(charge)) · discharge \(amps(discharge))")
+        }
+        if let low = battery.minPackVoltage_mV, let high = battery.maxPackVoltage_mV {
+            lifetime.append("Pack voltage: \(volts(low)) – \(volts(high))")
+        }
+        if let hours = battery.operatingHours {
+            lifetime.append("Operating time: \(hours.formatted()) h (\(hours / 24) days)")
+        }
+        let faults = (battery.permanentFailure ?? 0) + (battery.cellDisconnects ?? 0)
+        lifetime.append("Faults: " + (faults == 0 ? "none" : "reported (code \(battery.permanentFailure ?? 0))"))
+        if let limited = battery.thermallyLimitedCharging, limited > 0 {
+            lifetime.append("Heat-limited charging: \(limited.formatted()) times")
+        }
+        if !lifetime.isEmpty {
+            lines.append("")
+            lines.append("Lifetime")
+            lines.append(contentsOf: lifetime.map { "   " + $0 })
+        }
+        return lines.joined(separator: "\n")
+    }
+
+    private var adapterStatus: String {
+        guard battery.isPluggedIn else { return "Not connected" }
+        let parts = [battery.adapterWatts.map { "\($0)W" }, battery.adapterName].compactMap { $0 }
+        let state: String = switch battery.state {
+        case .charging: "charging"
+        case .charged: "fully charged"
+        case .pluggedNotCharging: "not charging"
+        case .onBattery: ""
+        }
+        return (["Connected"] + parts).joined(separator: " · ") + (state.isEmpty ? "" : " (\(state))")
     }
 
     private var maxCapacity: Double { min(max(battery.health ?? 1, 0), 1) }
@@ -306,7 +502,6 @@ private struct NetworkCard: View {
                           : "Show the Wi-Fi name (macOS asks for Location Services access)")
                 }
             }
-            .help(net.interfaceName.map { "\(net.interfaceKind) (\($0))" } ?? "Offline")
             Spacer(minLength: 6)
             HStack(spacing: 8) {
                 rate("arrow.down", net.downloadBytesPerSec, Palette.download)
@@ -330,6 +525,54 @@ private struct NetworkCard: View {
                 }
             }
         }
+        .help(tooltip)
+    }
+
+    /// Extra details shown when hovering the network card.
+    private var tooltip: String {
+        let net = monitor.network
+        let info = monitor.networkDetails
+        guard let interface = net.interfaceName else { return "Offline · no active network interface" }
+        var lines: [String] = []
+
+        lines.append("Interface: \(net.interfaceKind) (\(interface))" + (info.macAddress.map { " · MAC \($0)" } ?? ""))
+        if let wifi = info.wifi {
+            var network = [monitor.wifiName ?? "Wi-Fi"]
+            if let bssid = wifi.bssid { network.append("BSSID \(bssid)") }
+            lines.append("Network: " + network.joined(separator: " · "))
+            if let standard = wifi.standard { lines.append("Standard: \(standard)") }
+            if let rssi = wifi.rssi {
+                var signal = "Signal: \(rssi) dBm (\(wifi.signalQuality ?? "—"))"
+                if let noise = wifi.noise { signal += " · Noise \(noise) dBm · SNR \(rssi - noise) dB" }
+                lines.append(signal)
+            }
+            var channel: [String] = []
+            if let number = wifi.channel {
+                let extras = [wifi.band, wifi.channelWidth].compactMap { $0 }.joined(separator: ", ")
+                channel.append("Channel \(number)" + (extras.isEmpty ? "" : " (\(extras))"))
+            }
+            if let rate = wifi.transmitRateMbps { channel.append("Tx rate \(Int(rate)) Mbps") }
+            if !channel.isEmpty { lines.append(channel.joined(separator: " · ")) }
+            let security = [wifi.security.map { "Security: \($0)" }, wifi.countryCode.map { "Country \($0)" }]
+                .compactMap { $0 }
+            if !security.isEmpty { lines.append(security.joined(separator: " · ")) }
+        } else if let speed = info.linkSpeedMbps {
+            lines.append("Link speed: \(speed >= 1000 ? "\(speed / 1000) Gbps" : "\(speed) Mbps")")
+        }
+
+        if let v4 = net.localIPv4 { lines.append("IPv4: \(v4)" + (info.subnetMask.map { " / \($0)" } ?? "")) }
+        if let v6 = net.localIPv6 { lines.append("IPv6: \(v6)") }
+        if let router = info.router { lines.append("Router: \(router)") }
+        if !info.dnsServers.isEmpty { lines.append("DNS: " + info.dnsServers.joined(separator: ", ")) }
+        if !info.searchDomains.isEmpty { lines.append("Search domains: " + info.searchDomains.joined(separator: ", ")) }
+        lines.append("Public IP: \(monitor.publicIP ?? "—")")
+
+        lines.append("Traffic since startup: ↓ \(Format.bytes(net.totalDownloaded)) · ↑ \(Format.bytes(net.totalUploaded))")
+        let peakDown = monitor.downloadHistory.max() ?? 0, peakUp = monitor.uploadHistory.max() ?? 0
+        lines.append("Peak (last minute): ↓ \(Format.rate(peakDown)) · ↑ \(Format.rate(peakUp))")
+        lines.append("Low Data Mode: \(net.isConstrained ? "On" : "Off") · "
+                     + "Metered: \(net.isExpensive ? "Yes" : "No") · IPv6: \(net.supportsIPv6 ? "Yes" : "No")")
+        return lines.joined(separator: "\n")
     }
 
     private var title: String {

@@ -13,6 +13,13 @@ final class SystemMonitor {
     private(set) var smoothedCPU: Double = 0
 
     private(set) var memory = MemoryStats()
+    /// Biggest memory users; refreshed only while the panel is open.
+    private(set) var topProcesses: [ProcessMemory] = []
+    private(set) var topCPUProcesses: [ProcessCPU] = []
+    private(set) var processCount = 0
+    private(set) var thermalState = ProcessInfo.processInfo.thermalState
+    private let processSampler = ProcessSampler()
+    private var isPanelOpen = false
     private(set) var disk = DiskStats()
     private(set) var ssd: SSDHealth?
     private(set) var battery: BatteryStats?
@@ -21,7 +28,9 @@ final class SystemMonitor {
     private(set) var uploadHistory: [Double] = Array(repeating: 0, count: historyLength)
 
     private(set) var wifiName: String?
+    private(set) var networkDetails = NetworkDetails()
     private(set) var wifiAccess: WiFiNameProvider.Access = .notDetermined
+    private(set) var isLowPowerMode = ProcessInfo.processInfo.isLowPowerModeEnabled
     private(set) var publicIP: String?
     private(set) var isFetchingPublicIP = false
     private(set) var bootDate = MachineInfo.bootDate
@@ -68,6 +77,11 @@ final class SystemMonitor {
             smoothedCPU += 0.35 * (sample.total - smoothedCPU)
         }
         if let m = MemoryProvider.sample() { memory = m }
+        if isPanelOpen && tickCount % 3 == 0 {
+            sampleProcesses()
+            refreshNetworkDetails()
+        }
+        thermalState = ProcessInfo.processInfo.thermalState
 
         let previousInterface = network.interfaceName
         network = networkProvider.sample()
@@ -92,6 +106,7 @@ final class SystemMonitor {
             return b
         }
         bootDate = MachineInfo.bootDate
+        isLowPowerMode = ProcessInfo.processInfo.isLowPowerModeEnabled
         refreshWiFiName()
     }
 
@@ -117,10 +132,29 @@ final class SystemMonitor {
 
     /// Called when the panel opens: refresh slow values right away and fetch the public IP if stale.
     func panelDidOpen() {
+        isPanelOpen = true
+        sampleProcesses()   // CPU ranking appears on the next sample (needs two readings)
+        refreshNetworkDetails()
         refreshSlowMetrics()
         ssd = SSDHealthProvider.sample()
         if network.interfaceKind == "Wi-Fi" { wifiProvider.requestAccessIfNeeded() }
         refreshPublicIP(force: false)
+    }
+
+    private func refreshNetworkDetails() {
+        networkDetails = NetworkDetailsProvider.sample(interface: network.interfaceName,
+                                                       isWiFi: network.interfaceKind == "Wi-Fi")
+    }
+
+    private func sampleProcesses() {
+        let result = processSampler.sample(top: 5)
+        topProcesses = result.memory
+        topCPUProcesses = result.cpu
+        processCount = processSampler.processCount
+    }
+
+    func panelDidClose() {
+        isPanelOpen = false
     }
 
     func refreshPublicIP(force: Bool) {

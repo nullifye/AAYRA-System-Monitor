@@ -11,6 +11,9 @@ struct NetworkStats: Equatable {
     var uploadBytesPerSec: Double = 0
     var totalDownloaded: UInt64 = 0     // since boot, physical interfaces
     var totalUploaded: UInt64 = 0
+    var isExpensive = false             // e.g. iPhone hotspot
+    var isConstrained = false           // Low Data Mode
+    var supportsIPv6 = false
     var isConnected: Bool { interfaceName != nil }
 }
 
@@ -19,6 +22,7 @@ final class NetworkProvider: @unchecked Sendable {
     private let monitor = NWPathMonitor()
     private let lock = NSLock()
     private var _primary: (name: String, kind: String)?
+    private var _flags: (expensive: Bool, constrained: Bool, ipv6: Bool) = (false, false, false)
     private var lastCounters: (rx: UInt64, tx: UInt64, time: TimeInterval)?
 
     init() {
@@ -26,7 +30,11 @@ final class NetworkProvider: @unchecked Sendable {
             guard let self else { return }
             let iface = path.status == .satisfied ? path.availableInterfaces.first : nil
             let primary = iface.map { ($0.name, Self.describe($0.type)) }
-            self.lock.withLock { self._primary = primary }
+            let flags = (path.isExpensive, path.isConstrained, path.supportsIPv6)
+            self.lock.withLock {
+                self._primary = primary
+                self._flags = flags
+            }
         }
         monitor.start(queue: DispatchQueue(label: "aayra.network.path"))
     }
@@ -35,7 +43,8 @@ final class NetworkProvider: @unchecked Sendable {
 
     func sample() -> NetworkStats {
         var stats = NetworkStats()
-        let primary = lock.withLock { _primary }
+        let (primary, flags) = lock.withLock { (_primary, _flags) }
+        (stats.isExpensive, stats.isConstrained, stats.supportsIPv6) = flags
         stats.interfaceName = primary?.name
         stats.interfaceKind = primary?.kind ?? "Offline"
         if let name = primary?.name {

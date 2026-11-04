@@ -15,6 +15,39 @@ struct BatteryStats: Equatable {
     var currentCapacity_mAh: Int?
     var designCapacity_mAh: Int?
     var adapterWatts: Int?
+    var adapterName: String?
+    var fullChargeCapacity_mAh: Int?
+    /// Battery power flow in watts: positive while charging, negative while discharging.
+    var powerWatts: Double?
+    var serial: String?
+    var manufacturer: String?
+    /// Pack manufacture date; `manufactureDateIsEstimate` when derived from operating time.
+    var manufactureDate: Date?
+    var manufactureDateIsEstimate = false
+
+    // Live electrical readings
+    var voltage_mV: Int?
+    var current_mA: Int?                   // negative while discharging
+    var cellVoltages_mV: [Int] = []
+    var remaining_mAh: Int?
+    var rawMax_mAh: Int?
+    var systemLoadWatts: Double?           // what the whole Mac is drawing
+    var adapterInputWatts: Double?         // power coming in from the charger
+    var dailyMinSoc: Int?                  // today's lowest / highest charge, percent
+    var dailyMaxSoc: Int?
+
+    // Lifetime record kept by the battery's fuel gauge
+    var lifetimeMinTempC: Int?
+    var lifetimeMaxTempC: Int?
+    var lifetimeAvgTempC: Double?
+    var maxChargeCurrent_mA: Int?
+    var maxDischargeCurrent_mA: Int?
+    var minPackVoltage_mV: Int?
+    var maxPackVoltage_mV: Int?
+    var operatingHours: Int?
+    var permanentFailure: Int?
+    var cellDisconnects: Int?
+    var thermallyLimitedCharging: Int?
     /// "Maximum Capacity" exactly as System Settings shows it (from system_profiler).
     var reportedHealth: Double?
     /// Fallback health computed from the gauge's nominal capacity vs design capacity.
@@ -73,10 +106,21 @@ enum BatteryProvider {
         for className in ["AppleSmartBattery", "AppleSmartBatteryPack"] {
             guard let props = properties(ofServiceClass: className) else { continue }
             sources.append(props)
-            if let nested = props["BatteryData"] as? [String: Any] { sources.append(nested) }
+            if let nested = props["BatteryData"] as? [String: Any] {
+                sources.append(nested)
+                if let lifetime = nested["LifetimeData"] as? [String: Any] { sources.append(lifetime) }
+            }
+            for extra in ["PowerTelemetryData", "ChargerData"] {
+                if let dict = props[extra] as? [String: Any] { sources.append(dict) }
+            }
         }
         func lookup(_ key: String) -> Int? {
-            for dict in sources { if let v = dict[key] as? Int { return v } }
+            // NSNumber.int64Value also handles signed values that ioreg shows as huge unsigned numbers.
+            for dict in sources { if let v = dict[key] as? NSNumber { return Int(v.int64Value) } }
+            return nil
+        }
+        func lookupAny(_ key: String) -> Any? {
+            for dict in sources { if let v = dict[key] { return v } }
             return nil
         }
 
@@ -90,7 +134,100 @@ enum BatteryProvider {
         if s.isPluggedIn {
             let details = sources.lazy.compactMap { $0["AdapterDetails"] as? [String: Any] }.first
             if let watts = details?["Watts"] as? Int, watts > 0 { s.adapterWatts = watts }
+            s.adapterName = (details?["Name"] as? String) ?? (details?["Description"] as? String)
         }
+
+        s.fullChargeCapacity_mAh = lookup("FullChargeCapacity") ?? lookup("AppleRawMaxCapacity")
+        if let mV = lookup("Voltage"), let mA = lookup("InstantAmperage") ?? lookup("Amperage") {
+            s.powerWatts = Double(mV) * Double(mA) / 1_000_000
+        }
+        s.serial = (lookupAny("Serial") as? String).flatMap { $0.isEmpty ? nil : $0 }
+        s.manufacturer = (lookupAny("ManufacturerData") as? Data ?? lookupAny("MfgData") as? Data)
+            .flatMap(cellManufacturer)
+
+        s.voltage_mV = lookup("Voltage")
+        s.current_mA = lookup("InstantAmperage") ?? lookup("Amperage")
+        s.cellVoltages_mV = cellVoltages()
+        s.remaining_mAh = lookup("AppleRawCurrentCapacity")
+        s.rawMax_mAh = lookup("AppleRawMaxCapacity")
+        if let mW = lookup("SystemLoad"), mW > 0 { s.systemLoadWatts = Double(mW) / 1000 }
+        if let mW = lookup("SystemPowerIn"), mW > 0 { s.adapterInputWatts = Double(mW) / 1000 }
+        s.dailyMinSoc = lookup("DailyMinSoc")
+        s.dailyMaxSoc = lookup("DailyMaxSoc")
+        s.lifetimeMinTempC = lookup("MinimumTemperature")
+        s.lifetimeMaxTempC = lookup("MaximumTemperature")
+        s.lifetimeAvgTempC = lookup("AverageTemperature").map { Double($0) / 10 }   // tenths of °C
+        s.maxChargeCurrent_mA = lookup("MaximumChargeCurrent")
+        s.maxDischargeCurrent_mA = lookup("MaximumDischargeCurrent")
+        s.minPackVoltage_mV = lookup("MinimumPackVoltage")
+        s.maxPackVoltage_mV = lookup("MaximumPackVoltage")
+        s.operatingHours = lookup("TotalOperatingTime")
+        s.permanentFailure = lookup("PermanentFailureStatus")
+        s.cellDisconnects = lookup("BatteryCellDisconnectCount")
+        s.thermallyLimitedCharging = lookup("TimeChargingThermallyLimited")
+
+        if let raw = lookupAny("ManufactureDate") as? NSNumber, let date = decodeManufactureDate(raw.uint64Value) {
+            s.manufactureDate = date
+        } else if let hours = lookup("TotalOperatingTime"), hours > 0 {
+            // The fuel gauge counts hours since the pack was first powered, so this approximates its age.
+            s.manufactureDate = Date().addingTimeInterval(-Double(hours) * 3600)
+            s.manufactureDateIsEstimate = true
+        }
+    }
+
+    /// Apple Silicon packs store the date as six ASCII digits, little-endian, laid out DDMMYY
+    /// (e.g. 0x333230313133 → "311023" → 31 Oct 2023). Not every pack follows it, so validate.
+    private static func decodeManufactureDate(_ value: UInt64) -> Date? {
+        let bytes = (0..<6).map { UInt8((value >> (8 * UInt64($0))) & 0xFF) }
+        guard bytes.allSatisfy({ (0x30...0x39).contains($0) }) else { return nil }
+        let digits = bytes.map { Int($0) - 0x30 }
+        let day = digits[0] * 10 + digits[1], month = digits[2] * 10 + digits[3], year = 2000 + digits[4] * 10 + digits[5]
+        var parts = DateComponents(year: year, month: month, day: day)
+        parts.calendar = Calendar(identifier: .gregorian)
+        guard (1...12).contains(month), (1...31).contains(day), parts.isValidDate,
+              let date = parts.date, date <= Date(), year >= 2010 else { return nil }
+        return date
+    }
+
+    /// The manufacturer data block holds length-prefixed ASCII fields; the last alphabetic one is the cell maker code.
+    private static func cellManufacturer(from data: Data) -> String? {
+        let bytes = [UInt8](data)
+        var fields: [String] = []
+        var i = 0
+        while i < bytes.count {
+            let length = Int(bytes[i])
+            if (2...8).contains(length), i + length < bytes.count {
+                let chunk = bytes[(i + 1)...(i + length)]
+                if chunk.allSatisfy({ (0x20...0x7E).contains($0) }) {
+                    fields.append(String(decoding: chunk, as: UTF8.self))
+                    i += length + 1
+                    continue
+                }
+            }
+            i += 1
+        }
+        guard let code = fields.last(where: { $0.allSatisfy(\.isLetter) }) else { return nil }
+        let names = ["ATL": "ATL (Amperex)", "SMP": "Simplo", "SWD": "Sunwoda", "DSY": "Desay",
+                     "LGC": "LG Chem", "SDI": "Samsung SDI", "SNY": "Sony", "BYD": "BYD", "COS": "Coslight"]
+        return names[code] ?? code
+    }
+
+    /// Each AppleSmartBatteryBank (one per cell group) reports its own cell voltage.
+    private static func cellVoltages() -> [Int] {
+        var iterator: io_iterator_t = 0
+        guard IOServiceGetMatchingServices(kIOMainPortDefault, IOServiceMatching("AppleSmartBatteryBank"),
+                                           &iterator) == KERN_SUCCESS else { return [] }
+        defer { IOObjectRelease(iterator) }
+        var voltages: [Int] = []
+        while case let service = IOIteratorNext(iterator), service != 0 {
+            defer { IOObjectRelease(service) }
+            if let data = IORegistryEntryCreateCFProperty(service, "BatteryData" as CFString, kCFAllocatorDefault, 0)?
+                .takeRetainedValue() as? [String: Any],
+               let mV = (data["CellVoltage"] as? NSNumber)?.intValue, mV > 0 {
+                voltages.append(mV)
+            }
+        }
+        return voltages
     }
 
     private static func properties(ofServiceClass name: String) -> [String: Any]? {

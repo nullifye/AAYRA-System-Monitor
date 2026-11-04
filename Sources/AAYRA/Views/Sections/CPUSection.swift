@@ -27,8 +27,10 @@ struct CPUDetail: View {
 
     var body: some View {
         let cpu = monitor.cpu
-        DetailPanel(symbol: "cpu", tint: Palette.cpu, title: "CPU", subtitle: subtitle,
-                    actions: [.activityMonitor]) {
+        DetailPanel(
+            symbol: "cpu", tint: Palette.cpu, title: "CPU", subtitle: subtitle,
+            actions: [.activityMonitor]
+        ) {
             DetailSection("Usage") {
                 Sparkline(values: monitor.cpuHistory, color: Palette.cpu, height: 34)
                     .padding(.vertical, 2)
@@ -81,13 +83,14 @@ struct CPUDetail: View {
                 EmptyRow(text: "Measuring…")
             } else {
                 ForEach(monitor.topCPUProcesses) { process in
-                    ProcessRow(name: process.name, value: String(format: "%.1f%%", process.percent),
-                               fraction: process.percent / 100, tint: Palette.cpu, count: process.count,
-                               members: process.members.map {
-                                   .init(id: $0.id, name: $0.name, value: String(format: "%.1f%%", $0.value))
-                               },
-                               isExpanded: expandedProcess == process.id,
-                               onToggle: { expandedProcess = expandedProcess == process.id ? nil : process.id })
+                    ProcessRow(
+                        name: process.name, value: String(format: "%.1f%%", process.percent),
+                        fraction: process.percent / 100, tint: Palette.cpu, count: process.count,
+                        members: process.members.map {
+                            .init(id: $0.id, name: $0.name, value: String(format: "%.1f%%", $0.value))
+                        },
+                        isExpanded: expandedProcess == process.id,
+                        onToggle: { expandedProcess = expandedProcess == process.id ? nil : process.id })
                 }
             }
         }

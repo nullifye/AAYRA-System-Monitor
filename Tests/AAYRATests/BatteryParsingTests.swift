@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+
 @testable import AAYRA
 
 /// Decoding of the raw values the battery's fuel gauge reports.
@@ -16,18 +17,18 @@ struct BatteryParsingTests {
     }
 
     @Test func manufactureDateDecodesDDMMYY() {
-        #expect(gaugeValue("311023") == 0x3332_3031_3133)          // the documented example
+        #expect(gaugeValue("311023") == 0x3332_3031_3133)  // the documented example
         #expect(ymd(BatteryProvider.decodeManufactureDate(gaugeValue("311023"))) == [2023, 10, 31])
         #expect(ymd(BatteryProvider.decodeManufactureDate(gaugeValue("260125"))) == [2025, 1, 26])
     }
 
     @Test(arguments: [
-        "321222",   // day 32 (what this Mac's pack actually reports, so AAYRA estimates instead)
-        "311323",   // month 13
-        "310223",   // 31 February
-        "010109",   // 2009: before Apple Silicon packs, so not this format
-        "010199",   // 2099: in the future
-        "31AB23",   // not digits
+        "321222",  // day 32 (what this Mac's pack actually reports, so AAYRA estimates instead)
+        "311323",  // month 13
+        "310223",  // 31 February
+        "010109",  // 2009: before Apple Silicon packs, so not this format
+        "010199",  // 2099: in the future
+        "31AB23",  // not digits
     ])
     func manufactureDateRejectsInvalid(text: String) {
         #expect(BatteryProvider.decodeManufactureDate(gaugeValue(text)) == nil)
@@ -35,9 +36,9 @@ struct BatteryParsingTests {
 
     @Test func packAssemblerFromSerialPrefix() {
         #expect(BatteryProvider.packAssembler(fromSerial: "F8YHCH004AG0000G42") == "Sunwoda")
-        #expect(BatteryProvider.packAssembler(fromSerial: "d86abc") == "Desay")     // case-insensitive
+        #expect(BatteryProvider.packAssembler(fromSerial: "d86abc") == "Desay")  // case-insensitive
         #expect(BatteryProvider.packAssembler(fromSerial: "C32XYZ") == "Simplo")
-        #expect(BatteryProvider.packAssembler(fromSerial: "ZZZ123") == nil)        // unknown: no guess
+        #expect(BatteryProvider.packAssembler(fromSerial: "ZZZ123") == nil)  // unknown: no guess
         #expect(BatteryProvider.packAssembler(fromSerial: "") == nil)
     }
 
@@ -52,7 +53,7 @@ struct BatteryParsingTests {
     @Test func cellManufacturerFromManufacturerData() {
         #expect(BatteryProvider.cellManufacturer(from: mfgData(["1234", "ATL"])) == "ATL (Amperex)")
         #expect(BatteryProvider.cellManufacturer(from: mfgData(["SWD", "0042"])) == "Sunwoda")  // last *letters* field
-        #expect(BatteryProvider.cellManufacturer(from: mfgData(["QQX"])) == "QQX")             // unknown code kept as is
+        #expect(BatteryProvider.cellManufacturer(from: mfgData(["QQX"])) == "QQX")  // unknown code kept as is
         #expect(BatteryProvider.cellManufacturer(from: mfgData(["ATL"], junk: [0xFF, 0x01])) == "ATL (Amperex)")
         #expect(BatteryProvider.cellManufacturer(from: mfgData(["1234", "5678"])) == nil)
         #expect(BatteryProvider.cellManufacturer(from: Data()) == nil)

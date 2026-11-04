@@ -7,15 +7,15 @@ struct SSDInfo: Equatable {
     var model: String?
     var serial: String?
     var firmware: String?
-    var interconnect: String?     // e.g. "Apple Fabric"
-    var mediumType: String?       // e.g. "Solid State"
-    var bsdName: String?          // e.g. "disk0"
+    var interconnect: String?  // e.g. "Apple Fabric"
+    var mediumType: String?  // e.g. "Solid State"
+    var bsdName: String?  // e.g. "disk0"
     var capacityBytes: Int64?
 }
 
 /// Health of the internal NVMe SSD, from its SMART / Health log.
 struct SSDHealth: Equatable {
-    var health: Double            // 0...1, i.e. 100 % minus the drive's own wear estimate
+    var health: Double  // 0...1, i.e. 100 % minus the drive's own wear estimate
     var temperatureC: Double?
     var bytesWritten: UInt64
     var bytesRead: UInt64
@@ -42,8 +42,11 @@ enum SSDHealthProvider {
     private static func readInfo() -> SSDInfo {
         var result = SSDInfo()
         var iterator: io_iterator_t = 0
-        guard IOServiceGetMatchingServices(kIOMainPortDefault, IOServiceMatching("IOBlockStorageDevice"),
-                                           &iterator) == KERN_SUCCESS else { return result }
+        guard
+            IOServiceGetMatchingServices(
+                kIOMainPortDefault, IOServiceMatching("IOBlockStorageDevice"),
+                &iterator) == KERN_SUCCESS
+        else { return result }
         defer { IOObjectRelease(iterator) }
 
         while case let service = IOIteratorNext(iterator), service != 0 {
@@ -66,10 +69,14 @@ enum SSDHealthProvider {
 
             // The first IOMedia below the device is the whole disk (e.g. disk0).
             let options = IOOptionBits(kIORegistryIterateRecursively)
-            result.bsdName = IORegistryEntrySearchCFProperty(service, kIOServicePlane, "BSD Name" as CFString,
-                                                             kCFAllocatorDefault, options) as? String
-            if let size = IORegistryEntrySearchCFProperty(service, kIOServicePlane, "Size" as CFString,
-                                                          kCFAllocatorDefault, options) as? NSNumber {
+            result.bsdName =
+                IORegistryEntrySearchCFProperty(
+                    service, kIOServicePlane, "BSD Name" as CFString,
+                    kCFAllocatorDefault, options) as? String
+            if let size = IORegistryEntrySearchCFProperty(
+                service, kIOServicePlane, "Size" as CFString,
+                kCFAllocatorDefault, options) as? NSNumber
+            {
                 result.capacityBytes = size.int64Value
             }
             break
@@ -101,6 +108,6 @@ enum SSDHealthProvider {
     }
 }
 
-private extension String {
-    var nilIfEmpty: String? { isEmpty ? nil : self }
+extension String {
+    fileprivate var nilIfEmpty: String? { isEmpty ? nil : self }
 }

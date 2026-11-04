@@ -7,15 +7,17 @@ struct MemoryCard: View {
 
     var body: some View {
         Card(symbol: "memorychip", tint: Palette.memory) {
-            MeterHeader(title: "Memory", value: Format.memoryShort(memory.used),
-                        suffix: "of \(Format.bytes(memory.total))")
+            MeterHeader(
+                title: "Memory", value: Format.memoryShort(memory.used),
+                suffix: "of \(Format.bytes(memory.total))")
         } details: {
-            StackedBar(segments: [
-                .init(value: share(memory.app), color: Palette.memory),
-                .init(value: share(memory.wired), color: Palette.memoryWired),
-                .init(value: share(memory.compressed), color: Palette.memoryCompressed),
-                .init(value: share(memory.cached), color: Palette.memoryCached),
-            ], height: 8)
+            StackedBar(
+                segments: [
+                    .init(value: share(memory.app), color: Palette.memory),
+                    .init(value: share(memory.wired), color: Palette.memoryWired),
+                    .init(value: share(memory.compressed), color: Palette.memoryCompressed),
+                    .init(value: share(memory.cached), color: Palette.memoryCached),
+                ], height: 8)
             StatRow(stats: [
                 Stat(label: "App", value: Format.memoryShort(memory.app), dot: Palette.memory),
                 Stat(label: "Wired", value: Format.memoryShort(memory.wired), dot: Palette.memoryWired),
@@ -36,15 +38,19 @@ struct MemoryDetail: View {
     let topProcesses: [ProcessMemory]
 
     var body: some View {
-        DetailPanel(symbol: "memorychip", tint: Palette.memory, title: "Memory", subtitle: subtitle,
-                    actions: [.activityMonitor]) {
+        DetailPanel(
+            symbol: "memorychip", tint: Palette.memory, title: "Memory", subtitle: subtitle,
+            actions: [.activityMonitor]
+        ) {
             DetailSection("Usage") {
-                StackedBar(segments: [
-                    .init(value: share(memory.app), color: Palette.memory),
-                    .init(value: share(memory.wired), color: Palette.memoryWired),
-                    .init(value: share(memory.compressed), color: Palette.memoryCompressed),
-                    .init(value: share(memory.cached), color: Palette.memoryCached),
-                ], height: 8)
+                StackedBar(
+                    segments: [
+                        .init(value: share(memory.app), color: Palette.memory),
+                        .init(value: share(memory.wired), color: Palette.memoryWired),
+                        .init(value: share(memory.compressed), color: Palette.memoryCompressed),
+                        .init(value: share(memory.cached), color: Palette.memoryCached),
+                    ], height: 8
+                )
                 .padding(.vertical, 3)
                 DetailRow("App", Format.bytes(memory.app), dot: Palette.memory)
                 DetailRow("Wired", Format.bytes(memory.wired), dot: Palette.memoryWired)
@@ -60,8 +66,11 @@ struct MemoryDetail: View {
             DetailSection("Pressure & Swap") {
                 DetailRow("Pressure", memory.pressure.name, dot: memory.pressure.color)
                 if let level = memory.freePercent { DetailRow("Memory level", "\(level)% free") }
-                DetailRow("Swap used", memory.swapTotal == 0 ? "None"
-                          : "\(Format.bytes(memory.swapUsed)) of \(Format.bytes(memory.swapTotal))")
+                DetailRow(
+                    "Swap used",
+                    memory.swapTotal == 0
+                        ? "None"
+                        : "\(Format.bytes(memory.swapUsed)) of \(Format.bytes(memory.swapTotal))")
                 DetailRow("Swap-ins", Format.compactCount(memory.swapIns))
                 DetailRow("Swap-outs", Format.compactCount(memory.swapOuts))
             }
@@ -77,13 +86,14 @@ struct MemoryDetail: View {
                     EmptyRow(text: "Measuring…")
                 } else {
                     ForEach(topProcesses) { process in
-                        ProcessRow(name: process.name, value: Format.bytes(process.footprint),
-                                   fraction: share(process.footprint), tint: Palette.memory, count: process.count,
-                                   members: process.members.map {
-                                       .init(id: $0.id, name: $0.name, value: Format.bytes(UInt64($0.value)))
-                                   },
-                                   isExpanded: expandedProcess == process.id,
-                                   onToggle: { expandedProcess = expandedProcess == process.id ? nil : process.id })
+                        ProcessRow(
+                            name: process.name, value: Format.bytes(process.footprint),
+                            fraction: share(process.footprint), tint: Palette.memory, count: process.count,
+                            members: process.members.map {
+                                .init(id: $0.id, name: $0.name, value: Format.bytes(UInt64($0.value)))
+                            },
+                            isExpanded: expandedProcess == process.id,
+                            onToggle: { expandedProcess = expandedProcess == process.id ? nil : process.id })
                     }
                 }
             }

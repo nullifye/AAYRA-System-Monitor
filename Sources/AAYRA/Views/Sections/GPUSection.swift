@@ -27,8 +27,10 @@ struct GPUDetail: View {
         let gpu = monitor.gpu ?? GPUStats()
         let history = monitor.gpuHistory
         let span = Format.span(monitor.historySpan)
-        DetailPanel(symbol: Palette.gpuSymbol, tint: Palette.gpu, title: "GPU", subtitle: subtitle(gpu),
-                    actions: [.activityMonitor]) {
+        DetailPanel(
+            symbol: Palette.gpuSymbol, tint: Palette.gpu, title: "GPU", subtitle: subtitle(gpu),
+            actions: [.activityMonitor]
+        ) {
             DetailSection("Usage") {
                 Sparkline(values: history, color: Palette.gpu, height: 34)
                     .padding(.vertical, 2)
@@ -46,8 +48,9 @@ struct GPUDetail: View {
             DetailSection("Hardware") {
                 DetailRow("GPU", gpu.model ?? MachineInfo.chip)
                 if let cores = ChipInfo.gpuCores { DetailRow("GPU cores", "\(cores)") }
-                DetailRow("GPU restarts", gpu.recoveries == 0 ? "None" : "\(gpu.recoveries) since boot",
-                          dot: gpu.recoveries == 0 ? .green : .orange)
+                DetailRow(
+                    "GPU restarts", gpu.recoveries == 0 ? "None" : "\(gpu.recoveries) since boot",
+                    dot: gpu.recoveries == 0 ? .green : .orange)
             }
         }
     }

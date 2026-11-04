@@ -10,10 +10,10 @@ struct VolumeStats: Equatable, Identifiable {
     let url: URL
     var name: String
     var kind: Kind
-    var connection: String?        // "USB", "Thunderbolt", "SD card", "SMB", … when known
+    var connection: String?  // "USB", "Thunderbolt", "SD card", "SMB", … when known
     var total: Int64
     var available: Int64
-    var format: String?            // "APFS", "ExFAT", …
+    var format: String?  // "APFS", "ExFAT", …
     var isEjectable: Bool
     var isReadOnly: Bool
 
@@ -52,18 +52,22 @@ enum VolumeProvider {
     private static let session = DASessionCreate(kCFAllocatorDefault)
 
     static func sample() -> [VolumeStats] {
-        let urls = FileManager.default.mountedVolumeURLs(includingResourceValuesForKeys: keys,
-                                                         options: [.skipHiddenVolumes]) ?? []
+        let urls =
+            FileManager.default.mountedVolumeURLs(
+                includingResourceValuesForKeys: keys,
+                options: [.skipHiddenVolumes]) ?? []
         return urls.compactMap { url -> VolumeStats? in
             guard let values = try? url.resourceValues(forKeys: Set(keys)),
-                  values.volumeIsRootFileSystem != true,
-                  values.volumeIsBrowsable != false,
-                  !url.path.hasPrefix("/System/Volumes"),
-                  let total = values.volumeTotalCapacity, total > 0 else { return nil }
+                values.volumeIsRootFileSystem != true,
+                values.volumeIsBrowsable != false,
+                !url.path.hasPrefix("/System/Volumes"),
+                let total = values.volumeTotalCapacity, total > 0
+            else { return nil }
 
             let free = Int64(values.volumeAvailableCapacity ?? 0)
             // "Important usage" counts purgeable space like Finder; network shares don't report it.
-            let available = values.volumeIsLocal == false
+            let available =
+                values.volumeIsLocal == false
                 ? free
                 : max(values.volumeAvailableCapacityForImportantUsage ?? free, free)
             let disk = session.flatMap { diskInfo(for: url, session: $0) }
@@ -95,16 +99,19 @@ enum VolumeProvider {
     /// How the drive is connected, from Disk Arbitration (e.g. "USB", "Thunderbolt", "Disk Image").
     private static func diskInfo(for url: URL, session: DASession) -> (connection: String?, isDiskImage: Bool)? {
         guard let disk = DADiskCreateFromVolumePath(kCFAllocatorDefault, session, url as CFURL),
-              let info = DADiskCopyDescription(disk) as? [String: Any] else { return nil }
+            let info = DADiskCopyDescription(disk) as? [String: Any]
+        else { return nil }
         let model = info[kDADiskDescriptionDeviceModelKey as String] as? String
         let proto = info[kDADiskDescriptionDeviceProtocolKey as String] as? String
-        let isDiskImage = model?.localizedCaseInsensitiveContains("Disk Image") == true
+        let isDiskImage =
+            model?.localizedCaseInsensitiveContains("Disk Image") == true
             || proto == "Virtual Interface"
-        let connection: String? = switch proto {
-        case "Virtual Interface", nil: nil
-        case "Secure Digital": "SD card"
-        case let other?: other
-        }
+        let connection: String? =
+            switch proto {
+            case "Virtual Interface", nil: nil
+            case "Secure Digital": "SD card"
+            case let other?: other
+            }
         return (connection, isDiskImage)
     }
 }

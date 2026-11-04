@@ -4,7 +4,7 @@ import IOKit
 struct DiskIO: Equatable {
     var readBytesPerSec: Double = 0
     var writeBytesPerSec: Double = 0
-    var totalRead: UInt64 = 0          // since boot, all drives
+    var totalRead: UInt64 = 0  // since boot, all drives
     var totalWritten: UInt64 = 0
 }
 
@@ -29,16 +29,22 @@ final class DiskIOProvider {
 
     private static func readCounters() -> (read: UInt64, write: UInt64) {
         var iterator: io_iterator_t = 0
-        guard IOServiceGetMatchingServices(kIOMainPortDefault, IOServiceMatching("IOBlockStorageDriver"),
-                                           &iterator) == KERN_SUCCESS else { return (0, 0) }
+        guard
+            IOServiceGetMatchingServices(
+                kIOMainPortDefault, IOServiceMatching("IOBlockStorageDriver"),
+                &iterator) == KERN_SUCCESS
+        else { return (0, 0) }
         defer { IOObjectRelease(iterator) }
 
         var read: UInt64 = 0, write: UInt64 = 0
         while case let service = IOIteratorNext(iterator), service != 0 {
             defer { IOObjectRelease(service) }
-            guard let stats = IORegistryEntryCreateCFProperty(service, "Statistics" as CFString,
-                                                              kCFAllocatorDefault, 0)?
-                    .takeRetainedValue() as? [String: Any] else { continue }
+            guard
+                let stats = IORegistryEntryCreateCFProperty(
+                    service, "Statistics" as CFString,
+                    kCFAllocatorDefault, 0)?
+                    .takeRetainedValue() as? [String: Any]
+            else { continue }
             read &+= (stats["Bytes (Read)"] as? NSNumber)?.uint64Value ?? 0
             write &+= (stats["Bytes (Write)"] as? NSNumber)?.uint64Value ?? 0
         }

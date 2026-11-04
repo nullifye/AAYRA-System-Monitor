@@ -8,9 +8,9 @@ struct NetworkCard: View {
     @State private var copiedValue: String?
     @AppStorage(AppSettings.Key.fetchPublicIP) private var fetchPublicIP = true
     #if DEBUG
-    @Environment(\.isSnapshot) private var isSnapshot
+        @Environment(\.isSnapshot) private var isSnapshot
     #else
-    private let isSnapshot = false   // screenshots are a debug-only feature
+        private let isSnapshot = false  // screenshots are a debug-only feature
     #endif
 
     var body: some View {
@@ -29,9 +29,10 @@ struct NetworkCard: View {
                     }
                     .buttonStyle(.borderless)
                     .controlSize(.small)
-                    .help(monitor.wifiAccess == .denied
-                          ? "Allow Location Services in System Settings to show the Wi-Fi name"
-                          : "Show the Wi-Fi name (macOS asks for Location Services access)")
+                    .help(
+                        monitor.wifiAccess == .denied
+                            ? "Allow Location Services in System Settings to show the Wi-Fi name"
+                            : "Show the Wi-Fi name (macOS asks for Location Services access)")
                 }
                 if net.isVPNConnected {
                     Text("VPN")
@@ -61,8 +62,9 @@ struct NetworkCard: View {
 
     private var publicAddress: some View {
         HStack(spacing: 2) {
-            address("Public", isSnapshot ? "203.0.113.42" : monitor.publicIP,
-                    loading: monitor.isFetchingPublicIP, alignment: .trailing)
+            address(
+                "Public", isSnapshot ? "203.0.113.42" : monitor.publicIP,
+                loading: monitor.isFetchingPublicIP, alignment: .trailing)
             Button {
                 monitor.refreshPublicIP(force: true)
             } label: {
@@ -96,8 +98,10 @@ struct NetworkCard: View {
     }
 
     @ViewBuilder
-    private func address(_ label: String, _ value: String?, loading: Bool = false,
-                         alignment: Alignment = .leading) -> some View {
+    private func address(
+        _ label: String, _ value: String?, loading: Bool = false,
+        alignment: Alignment = .leading
+    ) -> some View {
         HStack(spacing: 3) {
             Text(label)
             if loading && value == nil {
@@ -139,18 +143,24 @@ struct NetworkDetail: View {
         let net = monitor.network
         let info = monitor.networkDetails
         let isWiFi = net.interfaceKind == "Wi-Fi"
-        DetailPanel(symbol: net.symbol, tint: net.isConnected ? Palette.network : .gray,
-                    title: "Network", subtitle: subtitle,
-                    actions: [DetailAction(title: isWiFi ? "Wi-Fi Settings…" : "Network Settings…", symbol: "gearshape") {
-                        SystemActions.openSettings(isWiFi ? .wifi : .network)
-                    }]) {
+        DetailPanel(
+            symbol: net.symbol, tint: net.isConnected ? Palette.network : .gray,
+            title: "Network", subtitle: subtitle,
+            actions: [
+                DetailAction(title: isWiFi ? "Wi-Fi Settings…" : "Network Settings…", symbol: "gearshape") {
+                    SystemActions.openSettings(isWiFi ? .wifi : .network)
+                }
+            ]
+        ) {
             DetailSection("Traffic") {
                 DualSparkline(download: monitor.downloadHistory, upload: monitor.uploadHistory, height: 34)
                     .padding(.vertical, 2)
                 DetailRow("Download", Format.rate(net.downloadBytesPerSec), dot: Palette.download)
                 DetailRow("Upload", Format.rate(net.uploadBytesPerSec), dot: Palette.upload)
-                DetailRow("Peak (last \(Format.span(monitor.historySpan)))", "↓ \(Format.rate(monitor.downloadHistory.max() ?? 0)) · "
-                          + "↑ \(Format.rate(monitor.uploadHistory.max() ?? 0))")
+                DetailRow(
+                    "Peak (last \(Format.span(monitor.historySpan)))",
+                    "↓ \(Format.rate(monitor.downloadHistory.max() ?? 0)) · "
+                        + "↑ \(Format.rate(monitor.uploadHistory.max() ?? 0))")
                 DetailRow("Since boot", "↓ \(Format.bytes(net.totalDownloaded)) · ↑ \(Format.bytes(net.totalUploaded))")
             }
             if let interface = net.interfaceName {
@@ -179,8 +189,9 @@ struct NetworkDetail: View {
                         if let bssid = wifi.bssid { DetailRow("BSSID", bssid, placeholder: "0a:1b:2c:3d:4e:5f") }
                         if let standard = wifi.standard { DetailRow("Standard", standard) }
                         if let rssi = wifi.rssi {
-                            DetailRow("Signal", "\(rssi) dBm" + (wifi.signalQuality.map { " (\($0))" } ?? ""),
-                                      dot: signalColor(rssi))
+                            DetailRow(
+                                "Signal", "\(rssi) dBm" + (wifi.signalQuality.map { " (\($0))" } ?? ""),
+                                dot: signalColor(rssi))
                             if let noise = wifi.noise { DetailRow("Noise · SNR", "\(noise) dBm · \(rssi - noise) dB") }
                         }
                         if let channel = wifi.channel {
@@ -200,7 +211,9 @@ struct NetworkDetail: View {
                     ForEach(Array(info.dnsServers.enumerated()), id: \.offset) { index, server in
                         DetailRow(index == 0 ? "DNS" : "", server, placeholder: index == 0 ? "1.1.1.1" : "1.0.0.1")
                     }
-                    if !info.searchDomains.isEmpty { DetailRow("Search domains", info.searchDomains.joined(separator: ", "), placeholder: "home") }
+                    if !info.searchDomains.isEmpty {
+                        DetailRow("Search domains", info.searchDomains.joined(separator: ", "), placeholder: "home")
+                    }
                     DetailRow("Public IP", monitor.publicIP ?? "—", placeholder: "203.0.113.42")
                 }
             } else {

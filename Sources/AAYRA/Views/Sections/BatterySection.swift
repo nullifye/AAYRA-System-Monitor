@@ -10,11 +10,12 @@ struct BatteryCard: View {
         Card(symbol: battery.symbol, tint: tint) {
             MeterHeader(title: "Battery", value: Format.percent(battery.charge))
         } details: {
-            StackedBar(segments: [
-                .init(value: battery.charge * maxCapacity, color: tint),
-                .init(value: (1 - battery.charge) * maxCapacity, color: .clear),
-                .init(value: 1 - maxCapacity, color: Palette.batteryWorn),
-            ], height: 8)
+            StackedBar(
+                segments: [
+                    .init(value: battery.charge * maxCapacity, color: tint),
+                    .init(value: (1 - battery.charge) * maxCapacity, color: .clear),
+                    .init(value: 1 - maxCapacity, color: Palette.batteryWorn),
+                ], height: 8)
             HStack(spacing: 10) {
                 Text(stateText)
                     .layoutPriority(1)
@@ -41,10 +42,14 @@ struct BatteryDetail: View {
     let lowPowerMode: Bool
 
     var body: some View {
-        DetailPanel(symbol: battery.symbol, tint: battery.tint, title: "Battery", subtitle: subtitle,
-                    actions: [DetailAction(title: "Battery Settings…", symbol: "gearshape") {
-                        SystemActions.openSettings(.battery)
-                    }]) {
+        DetailPanel(
+            symbol: battery.symbol, tint: battery.tint, title: "Battery", subtitle: subtitle,
+            actions: [
+                DetailAction(title: "Battery Settings…", symbol: "gearshape") {
+                    SystemActions.openSettings(.battery)
+                }
+            ]
+        ) {
             chargeSection
             healthSection
             packSection
@@ -60,11 +65,13 @@ struct BatteryDetail: View {
 
     private var chargeSection: some View {
         DetailSection("Charge") {
-            StackedBar(segments: [
-                .init(value: battery.charge * battery.maxCapacity, color: battery.tint),
-                .init(value: (1 - battery.charge) * battery.maxCapacity, color: .clear),
-                .init(value: 1 - battery.maxCapacity, color: Palette.batteryWorn),
-            ], height: 8)
+            StackedBar(
+                segments: [
+                    .init(value: battery.charge * battery.maxCapacity, color: battery.tint),
+                    .init(value: (1 - battery.charge) * battery.maxCapacity, color: .clear),
+                    .init(value: 1 - battery.maxCapacity, color: Palette.batteryWorn),
+                ], height: 8
+            )
             .padding(.vertical, 3)
             DetailRow("Charge", Format.percent(battery.charge), dot: battery.tint)
             DetailRow("State", battery.stateText)
@@ -123,7 +130,8 @@ struct BatteryDetail: View {
     private var lifetimeSection: some View {
         DetailSection("Lifetime") {
             if let low = battery.lifetimeMinTempC, let high = battery.lifetimeMaxTempC {
-                DetailRow("Temperature", "\(Format.temperature(celsius: Double(low))) – \(Format.temperature(celsius: Double(high)))")
+                DetailRow(
+                    "Temperature", "\(Format.temperature(celsius: Double(low))) – \(Format.temperature(celsius: Double(high)))")
             }
             if let avg = battery.lifetimeAvgTempC { DetailRow("Average temp", Format.temperature(celsius: avg)) }
             if let charge = battery.maxChargeCurrent_mA { DetailRow("Peak charge", Format.amps(charge)) }
@@ -193,19 +201,20 @@ extension BatteryStats {
         switch condition?.lowercased() {
         case "good", "normal": .green
         case nil: .secondary
-        default: .orange   // "Fair", "Service Recommended", …
+        default: .orange  // "Fair", "Service Recommended", …
         }
     }
 
     var adapterStatus: String {
         guard isPluggedIn else { return "Not connected" }
         let parts = [adapterWatts.map { "\($0)W" }, adapterName].compactMap { $0 }
-        let detail: String = switch state {
-        case .charging: "charging"
-        case .charged: "full"
-        case .pluggedNotCharging: "not charging"
-        case .onBattery: ""
-        }
+        let detail: String =
+            switch state {
+            case .charging: "charging"
+            case .charged: "full"
+            case .pluggedNotCharging: "not charging"
+            case .onBattery: ""
+            }
         let text = parts.isEmpty ? "Connected" : parts.joined(separator: " · ")
         return text + (detail.isEmpty ? "" : " (\(detail))")
     }

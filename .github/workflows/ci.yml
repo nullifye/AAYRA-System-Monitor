@@ -1,0 +1,115 @@
+name: CI
+
+on:
+  push:
+    branches: [master, main]
+    # A version tag (v1.5) also publishes the zipped app as a GitHub Release.
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+# Read-only by default; only the release job below can write (to create the GitHub Release).
+permissions:
+  contents: read
+
+# A newer push to the same branch supersedes a running build. Tag builds are never cancelled,
+# so a release can't be cut off halfway.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+jobs:
+  build:
+    # The Liquid Glass APIs need the macOS 26 SDK (Xcode 26), which this Apple Silicon image provides.
+    runs-on: macos-26
+    timeout-minutes: 30
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show toolchain
+        id: toolchain
+        run: |
+          xcodebuild -version
+          swift --version
+          echo "swift=$(swift --version 2>&1 | head -1 | sed -E 's/.*version ([0-9.]+).*/\1/')" >> "$GITHUB_OUTPUT"
+
+      - name: Read version
+        id: version
+        run: |
+          version=$(/usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" Resources/Info.plist)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "Building AAYRA $version"
+
+      # Formatting follows .swift-format (4-space indents, 130-column lines). Fix locally with:
+      #   swift format format --in-place --recursive Sources Tests
+      - name: Format
+        run: swift format lint --strict --recursive Sources Tests
+
+      # Build products for this toolchain, reused between runs (keyed by the Swift version).
+      - uses: actions/cache@v4
+        with:
+          path: .build
+          key: spm-${{ runner.os }}-swift${{ steps.toolchain.outputs.swift }}-${{ hashFiles('Package.swift', 'Sources/**', 'Tests/**') }}
+          restore-keys: spm-${{ runner.os }}-swift${{ steps.toolchain.outputs.swift }}-
+
+      # Parsers and formatters (battery date decoding, pack-maker lookup, number formats, version
+      # comparison…). A failing test stops the build, so a broken release is never published.
+      - name: Unit tests
+        run: swift test --parallel
+
+      - name: Release build
+        run: ./build-app.sh
+
+      - name: Report app size
+        run: |
+          bytes=$(find AAYRA.app -type f -exec stat -f %z {} + | awk '{ total += $1 } END { print total }')
+          echo "AAYRA.app is $bytes bytes"
+          echo "**AAYRA ${{ steps.version.outputs.version }}**: $bytes bytes" >> "$GITHUB_STEP_SUMMARY"
+
+      # ditto keeps the code signature and executable permissions intact.
+      - name: Zip the app
+        run: ditto -c -k --keepParent AAYRA.app "AAYRA-${{ steps.version.outputs.version }}.zip"
+
+      - name: Upload the app
+        uses: actions/upload-artifact@v4
+        with:
+          name: AAYRA-${{ steps.version.outputs.version }}
+          path: AAYRA-${{ steps.version.outputs.version }}.zip
+          if-no-files-found: error
+
+  # Tag v<version> → a GitHub Release with AAYRA-<version>.zip, downloadable without signing in.
+  # Runs on Linux: it only checks the tag and uploads the zip the build job made.
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      # The tag must match the app's version, so the release and the app agree.
+      - name: Check the tag matches the version
+        env:
+          VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          if [ "${GITHUB_REF_NAME#v}" != "$VERSION" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME doesn't match CFBundleShortVersionString '$VERSION' in Resources/Info.plist."
+            exit 1
+          fi
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: AAYRA-${{ needs.build.outputs.version }}
+
+      - name: Publish the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" "AAYRA-$VERSION.zip" \
+            --title "AAYRA $VERSION" \
+            --generate-notes \
+            --verify-tag

@@ -76,11 +76,12 @@ enum AppInfo {
             return version
         }
         #if DEBUG
-        // Unbundled debug runs (e.g. `--render`) read it from the source plist.
-        if let plist = NSDictionary(contentsOfFile: "Resources/Info.plist"),
-           let version = plist["CFBundleShortVersionString"] as? String {
-            return version
-        }
+            // Unbundled debug runs (e.g. `--render`) read it from the source plist.
+            if let plist = NSDictionary(contentsOfFile: "Resources/Info.plist"),
+                let version = plist["CFBundleShortVersionString"] as? String
+            {
+                return version
+            }
         #endif
         return ""
     }()

@@ -22,7 +22,7 @@ enum SpinnerFrames {
             draw(angle: angle, in: rect, blurred: blurred)
             return true
         }
-        image.isTemplate = true        // follows light/dark/tinted menu bars
+        image.isTemplate = true  // follows light/dark/tinted menu bars
         image.accessibilityDescription = "CPU activity"
         return image
     }
@@ -42,7 +42,7 @@ enum SpinnerFrames {
         for pass in passes {
             ctx.saveGState()
             ctx.translateBy(x: center.x, y: center.y)
-            ctx.rotate(by: -CGFloat((angle + pass.offset) * .pi / 180))   // clockwise
+            ctx.rotate(by: -CGFloat((angle + pass.offset) * .pi / 180))  // clockwise
             ctx.setFillColor(NSColor.black.withAlphaComponent(pass.alpha).cgColor)
             for _ in 0..<4 {
                 ctx.addPath(bladePath)
@@ -64,10 +64,12 @@ enum SpinnerFrames {
     private static let bladePath: CGPath = {
         let p = CGMutablePath()
         p.move(to: CGPoint(x: -1.4, y: 1.8))
-        p.addCurve(to: CGPoint(x: 2.4, y: 6.5),
-                   control1: CGPoint(x: -2.0, y: 4.2), control2: CGPoint(x: -0.4, y: 6.8))
-        p.addCurve(to: CGPoint(x: 1.4, y: 1.8),
-                   control1: CGPoint(x: 3.8, y: 5.2), control2: CGPoint(x: 2.8, y: 3.0))
+        p.addCurve(
+            to: CGPoint(x: 2.4, y: 6.5),
+            control1: CGPoint(x: -2.0, y: 4.2), control2: CGPoint(x: -0.4, y: 6.8))
+        p.addCurve(
+            to: CGPoint(x: 1.4, y: 1.8),
+            control1: CGPoint(x: 3.8, y: 5.2), control2: CGPoint(x: 2.8, y: 3.0))
         p.closeSubpath()
         return p
     }()

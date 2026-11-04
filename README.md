@@ -37,7 +37,7 @@ The cask removes the quarantine flag for you, so AAYRA opens straight away. Upda
 
 ### Manually
 
-1. Download **`AAYRA-<version>.zip`** from the [Releases](../../releases) page, or from the artifacts of the latest [Build](../../actions/workflows/build.yml) run.
+1. Download **`AAYRA-<version>.zip`** from the [Releases](../../releases) page, or from the artifacts of the latest [Build](../../actions/workflows/ci.yml) run.
 2. Unzip it and drag **AAYRA.app** into **Applications**.
 3. **Take it out of quarantine.** AAYRA is ad-hoc signed, not notarized by Apple, so macOS blocks it when it comes from the internet. You'll see something like *"Apple could not verify 'AAYRA' is free of malware"* or *"AAYRA is damaged and can't be opened"*. Open **Terminal** and run:
 
@@ -112,6 +112,14 @@ BIN="$(swift build --show-bin-path)/AAYRA"
 
 `AAYRA.app/Contents/MacOS/AAYRA --show-panel` launches the release app with the panel open.
 
+### Formatting
+
+Code style is defined in `.swift-format`: 4-space indents and lines up to 130 characters. CI rejects code that doesn't match. To fix formatting before you commit:
+
+```bash
+swift format format --in-place --recursive Sources Tests
+```
+
 ### Tests
 
 ```bash
@@ -139,11 +147,17 @@ They use Swift Testing and finish in under a second.
 
 ## Continuous integration
 
-GitHub Actions ([`.github/workflows/build.yml`](.github/workflows/build.yml)) builds the app on a macOS 26 runner for every push and pull request:
+GitHub Actions ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs for every push and pull request. The workflow is read-only; only the release job can write.
 
-- Runs the unit tests first. If any fail, nothing is built or released.
-- Builds the release app with `./build-app.sh`, reports its size in the run summary, and keeps `AAYRA-<version>.zip` as a downloadable artifact.
-- **Releases:** set the version in `Resources/Info.plist`, commit, then push a matching tag. The build checks that the tag matches the version, then publishes a GitHub Release with the zip attached.
+- **`build`** (macOS 26 runner):
+  - checks formatting against `.swift-format`;
+  - runs the unit tests;
+  - builds the release app with `./build-app.sh` and reports its size in the run summary;
+  - keeps `AAYRA-<version>.zip` as a downloadable artifact.
+
+  If any step fails, nothing is released.
+- **`release`** (Linux runner, version tags only): checks that the tag matches the version in `Resources/Info.plist`, then publishes a GitHub Release with the zip from `build`.
+- **To release:** set the version in `Resources/Info.plist`, commit, then push a matching tag.
 
   ```bash
   git tag -a v1.5 -m "AAYRA 1.5" && git push origin v1.5

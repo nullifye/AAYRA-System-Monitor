@@ -12,10 +12,11 @@ struct StorageCard: View {
         Card(symbol: "internaldrive.fill", tint: Palette.storage) {
             MeterHeader(title: "Storage", value: Format.diskShort(disk.available), suffix: "free")
         } details: {
-            StackedBar(segments: [
-                .init(value: share(disk.used), color: Palette.storage),
-                .init(value: share(disk.purgeable), color: Palette.storagePurgeable),
-            ], height: 8)
+            StackedBar(
+                segments: [
+                    .init(value: share(disk.used), color: Palette.storage),
+                    .init(value: share(disk.purgeable), color: Palette.storagePurgeable),
+                ], height: 8)
             StatRow(stats: [
                 Stat(label: "Used", value: Format.diskShort(disk.used), dot: Palette.storage),
                 Stat(label: "Purge.", value: Format.diskShort(disk.purgeable), dot: Palette.storagePurgeable),
@@ -61,15 +62,21 @@ struct StorageDetail: View {
 
     var body: some View {
         let io = monitor.diskIO
-        DetailPanel(symbol: "internaldrive.fill", tint: Palette.storage, title: "Storage", subtitle: subtitle,
-                    actions: [DetailAction(title: "Manage Storage…", symbol: "gearshape") {
-                        SystemActions.openSettings(.storage)
-                    }]) {
+        DetailPanel(
+            symbol: "internaldrive.fill", tint: Palette.storage, title: "Storage", subtitle: subtitle,
+            actions: [
+                DetailAction(title: "Manage Storage…", symbol: "gearshape") {
+                    SystemActions.openSettings(.storage)
+                }
+            ]
+        ) {
             DetailSection("Space") {
-                StackedBar(segments: [
-                    .init(value: share(disk.used), color: Palette.storage),
-                    .init(value: share(disk.purgeable), color: Palette.storagePurgeable),
-                ], height: 8)
+                StackedBar(
+                    segments: [
+                        .init(value: share(disk.used), color: Palette.storage),
+                        .init(value: share(disk.purgeable), color: Palette.storagePurgeable),
+                    ], height: 8
+                )
                 .padding(.vertical, 3)
                 DetailRow("Used", Format.diskBytes(disk.used), dot: Palette.storage)
                 DetailRow("Purgeable", Format.diskBytes(disk.purgeable), dot: Palette.storagePurgeable)
@@ -110,7 +117,8 @@ struct StorageDetail: View {
                     DetailRow("Condition", ssd.condition)
                     DetailRow("Spare", "\(ssd.availableSpare)% (min \(ssd.availableSpareThreshold)%)")
                     if let t = ssd.temperatureC { DetailRow("Temperature", Format.temperature(celsius: t)) }
-                    DetailRow("Power-on", "\(ssd.powerOnHours.formatted()) h (\(Int((Double(ssd.powerOnHours) / 24).rounded())) days)")
+                    DetailRow(
+                        "Power-on", "\(ssd.powerOnHours.formatted()) h (\(Int((Double(ssd.powerOnHours) / 24).rounded())) days)")
                     DetailRow("Power cycles", ssd.powerCycles.formatted())
                     DetailRow("Unsafe shutdowns", ssd.unsafeShutdowns.formatted())
                     DetailRow("Media errors", ssd.mediaErrors.formatted())

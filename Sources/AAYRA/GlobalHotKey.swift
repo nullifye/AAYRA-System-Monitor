@@ -11,11 +11,13 @@ final class GlobalHotKey {
     init(action: @escaping () -> Void) {
         self.action = action
         var pressed = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
-        InstallEventHandler(GetApplicationEventTarget(), { _, _, userData in
-            guard let userData else { return OSStatus(eventNotHandledErr) }
-            Unmanaged<GlobalHotKey>.fromOpaque(userData).takeUnretainedValue().action()
-            return noErr
-        }, 1, &pressed, Unmanaged.passUnretained(self).toOpaque(), &handler)
+        InstallEventHandler(
+            GetApplicationEventTarget(),
+            { _, _, userData in
+                guard let userData else { return OSStatus(eventNotHandledErr) }
+                Unmanaged<GlobalHotKey>.fromOpaque(userData).takeUnretainedValue().action()
+                return noErr
+            }, 1, &pressed, Unmanaged.passUnretained(self).toOpaque(), &handler)
     }
 
     deinit {
@@ -27,8 +29,8 @@ final class GlobalHotKey {
     @discardableResult
     func register(_ shortcut: AppSettings.Shortcut) -> Bool {
         unregister()
-        guard let key = shortcut.key else { return true }   // "Off"
-        let id = EventHotKeyID(signature: OSType(0x4141_5952), id: 1)   // 'AAYR'
+        guard let key = shortcut.key else { return true }  // "Off"
+        let id = EventHotKeyID(signature: OSType(0x4141_5952), id: 1)  // 'AAYR'
         return RegisterEventHotKey(key.code, key.modifiers, id, GetApplicationEventTarget(), 0, &hotKey) == noErr
     }
 

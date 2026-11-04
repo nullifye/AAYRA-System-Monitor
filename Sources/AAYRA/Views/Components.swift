@@ -32,7 +32,7 @@ enum Metrics {
     static let headerHeight: CGFloat = 18
     static let cardRadius: CGFloat = 18
     static let floatMargin: CGFloat = 12
-    static let detailWidth: CGFloat = 640   // two columns of sections
+    static let detailWidth: CGFloat = 640  // two columns of sections
 }
 
 /// Control Center–style icon: white glyph on a filled colour circle.
@@ -93,9 +93,9 @@ private struct CardBackground: ViewModifier {
     var floating: Bool
     @Environment(\.colorScheme) private var scheme
     #if DEBUG
-    @Environment(\.isSnapshot) private var isSnapshot
+        @Environment(\.isSnapshot) private var isSnapshot
     #else
-    private let isSnapshot = false   // screenshots are a debug-only feature
+        private let isSnapshot = false  // screenshots are a debug-only feature
     #endif
 
     func body(content: Content) -> some View {
@@ -183,8 +183,8 @@ struct BigValue: View {
     }
 }
 
-private extension String {
-    var nilIfEmpty: String? { isEmpty ? nil : self }
+extension String {
+    fileprivate var nilIfEmpty: String? { isEmpty ? nil : self }
 }
 
 /// Stats in equal, fixed columns, so nothing shifts sideways when a value changes width.
@@ -315,8 +315,11 @@ struct Sparkline: View {
     var body: some View {
         Chart(Array(values.enumerated()), id: \.offset) { point in
             AreaMark(x: .value("t", point.offset), y: .value("v", point.element))
-                .foregroundStyle(LinearGradient(colors: [color.opacity(0.4), color.opacity(0.03)],
-                                                startPoint: .top, endPoint: .bottom))
+                .foregroundStyle(
+                    LinearGradient(
+                        colors: [color.opacity(0.4), color.opacity(0.03)],
+                        startPoint: .top, endPoint: .bottom)
+                )
                 .interpolationMethod(.monotone)
             LineMark(x: .value("t", point.offset), y: .value("v", point.element))
                 .foregroundStyle(color)
@@ -385,9 +388,9 @@ struct DetailPopover<Detail: View>: ViewModifier {
     @State private var closedAt = Date.distantPast
     @State private var anchor: NSView?
     #if DEBUG
-    @Environment(\.isSnapshot) private var isSnapshot
+        @Environment(\.isSnapshot) private var isSnapshot
     #else
-    private let isSnapshot = false
+        private let isSnapshot = false
     #endif
 
     private var isOpen: Bool { selection == kind }
@@ -418,10 +421,10 @@ struct DetailPopover<Detail: View>: ViewModifier {
             .animation(.easeOut(duration: 0.12), value: isHovering)
             .animation(.easeOut(duration: 0.12), value: isOpen)
             .background {
-                if !isSnapshot {   // AppKit views can't be drawn offscreen
+                if !isSnapshot {  // AppKit views can't be drawn offscreen
                     PopoverAnchor { view in
                         anchor = view
-                        if isOpen { present() }   // clicked before the anchor existed
+                        if isOpen { present() }  // clicked before the anchor existed
                     }
                 }
             }
@@ -450,7 +453,7 @@ final class DetailPresenter: NSObject, NSPopoverDelegate {
     func show(_ kind: DetailKind, content: AnyView, from anchor: NSView, edge: Edge, onClose: @escaping () -> Void) {
         closeCurrent()
         let popover = NSPopover()
-        popover.behavior = .transient            // a click anywhere else closes it
+        popover.behavior = .transient  // a click anywhere else closes it
         popover.animates = true
         popover.delegate = self
         let controller = DetailContentController(content: content)
@@ -505,10 +508,10 @@ private final class DetailContentController: NSViewController {
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
 
     override func loadView() {
-        let sized = content.onGeometryChange(for: CGSize.self, of: { $0.size }) { [weak self] size in
+        let sized = content.onGeometryChange(for: CGSize.self, of: \.size) { [weak self] size in
             guard let self, self.preferredContentSize != size else { return }
             self.preferredContentSize = size
-            DispatchQueue.main.async { self.onResize?() }   // after the popover has taken the new size
+            DispatchQueue.main.async { self.onResize?() }  // after the popover has taken the new size
         }
         let host = FirstClickHostingView(rootView: AnyView(sized))
         host.sizingOptions = []
@@ -541,8 +544,10 @@ private struct PopoverAnchor: NSViewRepresentable {
 }
 
 extension View {
-    func detailPopover<Detail: View>(_ kind: DetailKind, selection: Binding<DetailKind?>, edge: Edge, tint: Color,
-                                     @ViewBuilder detail: @escaping () -> Detail) -> some View {
+    func detailPopover<Detail: View>(
+        _ kind: DetailKind, selection: Binding<DetailKind?>, edge: Edge, tint: Color,
+        @ViewBuilder detail: @escaping () -> Detail
+    ) -> some View {
         modifier(DetailPopover(kind: kind, selection: selection, edge: edge, tint: tint, detail: detail))
     }
 }

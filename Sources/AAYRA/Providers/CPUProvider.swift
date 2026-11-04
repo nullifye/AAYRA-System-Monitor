@@ -1,7 +1,7 @@
 import Darwin
 
 struct CPUStats: Equatable {
-    var total: Double = 0      // 0...1
+    var total: Double = 0  // 0...1
     var user: Double = 0
     var system: Double = 0
     var perCore: [Double] = []
@@ -28,20 +28,22 @@ final class CPUProvider {
         let kr = host_processor_info(mach_host_self(), PROCESSOR_CPU_LOAD_INFO, &cpuCount, &info, &infoCount)
         guard kr == KERN_SUCCESS, let info else { return nil }
         defer {
-            vm_deallocate(mach_task_self_, vm_address_t(bitPattern: info),
-                          vm_size_t(Int(infoCount) * MemoryLayout<integer_t>.stride))
+            vm_deallocate(
+                mach_task_self_, vm_address_t(bitPattern: info),
+                vm_size_t(Int(infoCount) * MemoryLayout<integer_t>.stride))
         }
 
         var current: [Ticks] = []
         current.reserveCapacity(Int(cpuCount))
         for i in 0..<Int(cpuCount) {
             let base = Int(CPU_STATE_MAX) * i
-            current.append(Ticks(
-                user: UInt32(bitPattern: info[base + Int(CPU_STATE_USER)]),
-                system: UInt32(bitPattern: info[base + Int(CPU_STATE_SYSTEM)]),
-                idle: UInt32(bitPattern: info[base + Int(CPU_STATE_IDLE)]),
-                nice: UInt32(bitPattern: info[base + Int(CPU_STATE_NICE)])
-            ))
+            current.append(
+                Ticks(
+                    user: UInt32(bitPattern: info[base + Int(CPU_STATE_USER)]),
+                    system: UInt32(bitPattern: info[base + Int(CPU_STATE_SYSTEM)]),
+                    idle: UInt32(bitPattern: info[base + Int(CPU_STATE_IDLE)]),
+                    nice: UInt32(bitPattern: info[base + Int(CPU_STATE_NICE)])
+                ))
         }
         defer { previous = current }
         guard previous.count == current.count else { return nil }

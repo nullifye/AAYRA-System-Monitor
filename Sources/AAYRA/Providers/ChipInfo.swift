@@ -19,7 +19,8 @@ enum ChipInfo {
                 IORegistryEntryCreateCFProperty(cpu, key as CFString, kCFAllocatorDefault, 0)?.takeRetainedValue()
             }
             guard let id = (value("logical-cpu-id") as? NSNumber)?.intValue,
-                  let data = value("cluster-type") as? Data else { continue }
+                let data = value("cluster-type") as? Data
+            else { continue }
             byID[id] = String(decoding: data.prefix { $0 != 0 }, as: UTF8.self)
         }
         guard !byID.isEmpty else { return [] }
@@ -30,7 +31,8 @@ enum ChipInfo {
         let service = IOServiceGetMatchingService(kIOMainPortDefault, IOServiceMatching("AGXAccelerator"))
         guard service != 0 else { return nil }
         defer { IOObjectRelease(service) }
-        return (IORegistryEntryCreateCFProperty(service, "gpu-core-count" as CFString, kCFAllocatorDefault, 0)?
+        return
+            (IORegistryEntryCreateCFProperty(service, "gpu-core-count" as CFString, kCFAllocatorDefault, 0)?
             .takeRetainedValue() as? NSNumber)?.intValue
     }()
 
@@ -39,10 +41,12 @@ enum ChipInfo {
     static let build = Sysctl.string("kern.osversion")
 
     struct Cache { let l1i: Int?; let l1d: Int?; let l2: Int? }
-    static let performanceCache = Cache(l1i: Sysctl.int("hw.perflevel0.l1icachesize"),
-                                        l1d: Sysctl.int("hw.perflevel0.l1dcachesize"),
-                                        l2: Sysctl.int("hw.perflevel0.l2cachesize"))
-    static let efficiencyCache = Cache(l1i: Sysctl.int("hw.perflevel1.l1icachesize"),
-                                       l1d: Sysctl.int("hw.perflevel1.l1dcachesize"),
-                                       l2: Sysctl.int("hw.perflevel1.l2cachesize"))
+    static let performanceCache = Cache(
+        l1i: Sysctl.int("hw.perflevel0.l1icachesize"),
+        l1d: Sysctl.int("hw.perflevel0.l1dcachesize"),
+        l2: Sysctl.int("hw.perflevel0.l2cachesize"))
+    static let efficiencyCache = Cache(
+        l1i: Sysctl.int("hw.perflevel1.l1icachesize"),
+        l1d: Sysctl.int("hw.perflevel1.l1dcachesize"),
+        l2: Sysctl.int("hw.perflevel1.l2cachesize"))
 }

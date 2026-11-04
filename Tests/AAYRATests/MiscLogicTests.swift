@@ -1,15 +1,16 @@
 import Testing
+
 @testable import AAYRA
 
 /// Version comparison (update check) and naming rules (process list).
 struct VersionTests {
     @Test(arguments: [
         ("1.4", "1.3", true),
-        ("v1.4", "1.3", true),       // tags have a "v" prefix
+        ("v1.4", "1.3", true),  // tags have a "v" prefix
         ("1.3", "1.3", false),
-        ("1.3.0", "1.3", false),     // same version, different length
+        ("1.3.0", "1.3", false),  // same version, different length
         ("1.3.1", "1.3", true),
-        ("1.10", "1.9", true),       // numeric, not alphabetical
+        ("1.10", "1.9", true),  // numeric, not alphabetical
         ("1.2.9", "1.3", false),
         ("2.0", "1.99", true),
     ])
@@ -56,7 +57,7 @@ struct ShortcutTests {
         for shortcut in AppSettings.Shortcut.allCases {
             #expect((shortcut.key == nil) == (shortcut == .off))
         }
-        #expect(AppSettings.Shortcut.optionCommandM.key?.code == 46)   // kVK_ANSI_M
+        #expect(AppSettings.Shortcut.optionCommandM.key?.code == 46)  // kVK_ANSI_M
         #expect(AppSettings.Shortcut.optionCommandM.title == "⌥⌘M")
     }
 }

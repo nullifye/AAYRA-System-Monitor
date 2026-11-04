@@ -6,14 +6,14 @@ import SystemConfiguration
 /// Live Wi-Fi link details from CoreWLAN (SSID and BSSID need Location Services access).
 struct WiFiDetails: Equatable {
     var bssid: String?
-    var rssi: Int?                 // dBm
-    var noise: Int?                // dBm
+    var rssi: Int?  // dBm
+    var noise: Int?  // dBm
     var transmitRateMbps: Double?
     var channel: Int?
-    var band: String?              // "2.4 GHz", "5 GHz", "6 GHz"
-    var channelWidth: String?      // "80 MHz"
+    var band: String?  // "2.4 GHz", "5 GHz", "6 GHz"
+    var channelWidth: String?  // "80 MHz"
     var security: String?
-    var standard: String?          // "Wi-Fi 6 (802.11ax)"
+    var standard: String?  // "Wi-Fi 6 (802.11ax)"
     var countryCode: String?
 
     var signalQuality: String? {
@@ -34,7 +34,7 @@ struct NetworkDetails: Equatable {
     var router: String?
     var dnsServers: [String] = []
     var searchDomains: [String] = []
-    var linkSpeedMbps: Int?        // wired links only (Wi-Fi uses the transmit rate)
+    var linkSpeedMbps: Int?  // wired links only (Wi-Fi uses the transmit rate)
     var wifi: WiFiDetails?
 }
 
@@ -69,7 +69,8 @@ enum NetworkDetailsProvider {
         for ptr in sequence(first: first, next: { $0.pointee.ifa_next }) {
             let ifa = ptr.pointee
             guard let addr = ifa.ifa_addr, Int32(addr.pointee.sa_family) == AF_LINK,
-                  String(cString: ifa.ifa_name) == interface else { continue }
+                String(cString: ifa.ifa_name) == interface
+            else { continue }
             let mac: String? = addr.withMemoryRebound(to: sockaddr_dl.self, capacity: 1) { dl -> String? in
                 guard dl.pointee.sdl_alen == 6 else { return nil }
                 // The address bytes follow the interface name inside sdl_data.
@@ -98,12 +99,18 @@ enum NetworkDetailsProvider {
             d.band = [1: "2.4 GHz", 2: "5 GHz", 3: "6 GHz"][channel.channelBand.rawValue]
             d.channelWidth = [1: "20 MHz", 2: "40 MHz", 3: "80 MHz", 4: "160 MHz", 5: "320 MHz"][channel.channelWidth.rawValue]
         }
-        d.security = [0: "Open", 1: "WEP", 2: "WPA Personal", 3: "WPA/WPA2 Personal", 4: "WPA2 Personal",
-                      5: "Personal", 6: "Dynamic WEP", 7: "WPA Enterprise", 8: "WPA/WPA2 Enterprise",
-                      9: "WPA2 Enterprise", 10: "Enterprise", 11: "WPA3 Personal", 12: "WPA3 Enterprise",
-                      13: "WPA2/WPA3 Personal", 14: "Enhanced Open (OWE)", 15: "OWE Transition"][wifi.security().rawValue]
-        d.standard = [1: "802.11a", 2: "802.11b", 3: "802.11g", 4: "Wi-Fi 4 (802.11n)", 5: "Wi-Fi 5 (802.11ac)",
-                      6: "Wi-Fi 6 (802.11ax)", 7: "Wi-Fi 7 (802.11be)"][wifi.activePHYMode().rawValue]
+        d.security =
+            [
+                0: "Open", 1: "WEP", 2: "WPA Personal", 3: "WPA/WPA2 Personal", 4: "WPA2 Personal",
+                5: "Personal", 6: "Dynamic WEP", 7: "WPA Enterprise", 8: "WPA/WPA2 Enterprise",
+                9: "WPA2 Enterprise", 10: "Enterprise", 11: "WPA3 Personal", 12: "WPA3 Enterprise",
+                13: "WPA2/WPA3 Personal", 14: "Enhanced Open (OWE)", 15: "OWE Transition",
+            ][wifi.security().rawValue]
+        d.standard =
+            [
+                1: "802.11a", 2: "802.11b", 3: "802.11g", 4: "Wi-Fi 4 (802.11n)", 5: "Wi-Fi 5 (802.11ac)",
+                6: "Wi-Fi 6 (802.11ax)", 7: "Wi-Fi 7 (802.11be)",
+            ][wifi.activePHYMode().rawValue]
         d.countryCode = wifi.countryCode()
         return d
     }

@@ -9,8 +9,10 @@ enum MemoryHardware {
         guard entry != 0 else { return (nil, nil) }
         defer { IOObjectRelease(entry) }
         func text(_ key: String) -> String? {
-            guard let data = IORegistryEntryCreateCFProperty(entry, key as CFString, kCFAllocatorDefault, 0)?
-                .takeRetainedValue() as? Data else { return nil }
+            guard
+                let data = IORegistryEntryCreateCFProperty(entry, key as CFString, kCFAllocatorDefault, 0)?
+                    .takeRetainedValue() as? Data
+            else { return nil }
             let value = String(decoding: data.prefix { $0 != 0 }, as: UTF8.self)
             return value.isEmpty ? nil : value
         }

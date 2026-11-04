@@ -15,18 +15,19 @@ enum SettingsWindow {
         if window == nil {
             let host = NSHostingController(rootView: SettingsView())
             host.sizingOptions = [.preferredContentSize]
-            let panel = NSPanel(contentRect: .zero, styleMask: [.titled, .closable, .nonactivatingPanel],
-                                backing: .buffered, defer: true)
+            let panel = NSPanel(
+                contentRect: .zero, styleMask: [.titled, .closable, .nonactivatingPanel],
+                backing: .buffered, defer: true)
             panel.contentViewController = host
             panel.title = "AAYRA Settings"
             panel.isReleasedWhenClosed = false
-            panel.hidesOnDeactivate = false          // panels hide when their app deactivates by default
+            panel.hidesOnDeactivate = false  // panels hide when their app deactivates by default
             panel.becomesKeyOnlyIfNeeded = false
-            panel.setContentSize(host.view.fittingSize)   // size first, so centring uses the real height
+            panel.setContentSize(host.view.fittingSize)  // size first, so centring uses the real height
             panel.center()
             window = panel
         }
-        window?.orderFrontRegardless()                 // in front of the app you're using
+        window?.orderFrontRegardless()  // in front of the app you're using
         window?.makeKey()
     }
 }
@@ -43,7 +44,7 @@ struct SettingsView: View {
     @AppStorage(AppSettings.Key.temperatureUnit) private var temperatureUnit = AppSettings.TemperatureUnit.system.rawValue
     @AppStorage(AppSettings.Key.fetchPublicIP) private var fetchPublicIP = true
     @AppStorage(AppSettings.Key.showsSection(.cpu)) private var showCPU = true
-    @AppStorage(AppSettings.Key.showsSection(.gpu)) private var showGPU = false   // off by default
+    @AppStorage(AppSettings.Key.showsSection(.gpu)) private var showGPU = false  // off by default
     @AppStorage(AppSettings.Key.showsSection(.storage)) private var showStorage = true
     @AppStorage(AppSettings.Key.showsSection(.memory)) private var showMemory = true
     @AppStorage(AppSettings.Key.showsSection(.battery)) private var showBattery = true
@@ -93,23 +94,30 @@ struct SettingsView: View {
             } header: {
                 Text("General")
             } footer: {
-                Text("⌥⌘M is also “Minimize All” in many apps; while AAYRA runs, it opens the panel instead. Pick another shortcut if you use that.")
-                    .foregroundStyle(.secondary)
+                Text(
+                    "⌥⌘M is also “Minimize All” in many apps; while AAYRA runs, it opens the panel instead. Pick another shortcut if you use that."
+                )
+                .foregroundStyle(.secondary)
             }
 
             Section {
                 Toggle("Animate icon", isOn: $animateIcon)
-                Toggle("Show CPU percentage", isOn: Binding(
-                    get: { showPercent || !animateIcon },
-                    set: { showPercent = $0 }
-                ))
+                Toggle(
+                    "Show CPU percentage",
+                    isOn: Binding(
+                        get: { showPercent || !animateIcon },
+                        set: { showPercent = $0 }
+                    )
+                )
                 .disabled(!animateIcon)
                 Toggle("Show network speed", isOn: $showNetworkSpeed)
             } header: {
                 Text("Menu Bar")
             } footer: {
-                Text("The turbine spins faster as CPU load rises. With the animation off, the CPU percentage is always shown. Network speed appears as a separate item you can ⌘-drag.")
-                    .foregroundStyle(.secondary)
+                Text(
+                    "The turbine spins faster as CPU load rises. With the animation off, the CPU percentage is always shown. Network speed appears as a separate item you can ⌘-drag."
+                )
+                .foregroundStyle(.secondary)
             }
 
             Section("Sections") {
@@ -164,8 +172,10 @@ struct SettingsView: View {
             } header: {
                 Text("Updates")
             } footer: {
-                Text("Asks GitHub once a day whether a newer release exists. Nothing is downloaded or installed, and nothing about you or your Mac is sent.")
-                    .foregroundStyle(.secondary)
+                Text(
+                    "Asks GitHub once a day whether a newer release exists. Nothing is downloaded or installed, and nothing about you or your Mac is sent."
+                )
+                .foregroundStyle(.secondary)
             }
 
             Section("About") {
@@ -174,10 +184,12 @@ struct SettingsView: View {
                     Spacer()
                     Text(AppInfo.author).foregroundStyle(.secondary)
                 }
-                linkRow("Source code", symbol: "chevron.left.forwardslash.chevron.right", color: .gray,
-                        text: "github.com/nullifye", url: AppInfo.repositoryURL)
-                linkRow("Telegram", symbol: "paperplane.fill", color: .blue,
-                        text: "t.me/mohdrafhan", url: AppInfo.authorTelegramURL)
+                linkRow(
+                    "Source code", symbol: "chevron.left.forwardslash.chevron.right", color: .gray,
+                    text: "github.com/nullifye", url: AppInfo.repositoryURL)
+                linkRow(
+                    "Telegram", symbol: "paperplane.fill", color: .blue,
+                    text: "t.me/mohdrafhan", url: AppInfo.authorTelegramURL)
             }
         }
         .formStyle(.grouped)
@@ -197,11 +209,11 @@ struct SettingsView: View {
                 .foregroundStyle(.secondary)
         case .noReleases:
             Text("No releases published yet").foregroundStyle(.secondary)
-        case let .available(newVersion, url):
+        case .available(let newVersion, let url):
             Link(destination: url) {
                 Label("AAYRA \(newVersion) is available ↗", systemImage: "arrow.down.circle.fill")
             }
-        case let .failed(message):
+        case .failed(let message):
             Label(message, systemImage: "exclamationmark.triangle.fill").foregroundStyle(.orange)
         }
     }

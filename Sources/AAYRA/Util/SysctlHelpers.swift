@@ -38,9 +38,10 @@ enum MachineInfo {
         let entry = IORegistryEntryFromPath(kIOMainPortDefault, "IODeviceTree:/product")
         defer { if entry != 0 { IOObjectRelease(entry) } }
         if entry != 0,
-           let cf = IORegistryEntryCreateCFProperty(entry, "product-name" as CFString, kCFAllocatorDefault, 0)?
-            .takeRetainedValue(),
-           let data = cf as? Data {
+            let cf = IORegistryEntryCreateCFProperty(entry, "product-name" as CFString, kCFAllocatorDefault, 0)?
+                .takeRetainedValue(),
+            let data = cf as? Data
+        {
             let name = String(decoding: data, as: UTF8.self).trimmingCharacters(in: .controlCharacters)
             if !name.isEmpty { return name }
         }

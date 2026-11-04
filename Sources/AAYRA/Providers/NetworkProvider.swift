@@ -3,19 +3,19 @@ import Foundation
 import Network
 
 struct NetworkStats: Equatable {
-    var interfaceName: String?          // e.g. "en0"
+    var interfaceName: String?  // e.g. "en0"
     var interfaceKind: String = "Offline"
     var localIPv4: String?
     var localIPv6: String?
     var downloadBytesPerSec: Double = 0
     var uploadBytesPerSec: Double = 0
-    var totalDownloaded: UInt64 = 0     // since boot, physical interfaces
+    var totalDownloaded: UInt64 = 0  // since boot, physical interfaces
     var totalUploaded: UInt64 = 0
-    var isExpensive = false             // e.g. iPhone hotspot
-    var isConstrained = false           // Low Data Mode
+    var isExpensive = false  // e.g. iPhone hotspot
+    var isConstrained = false  // Low Data Mode
     var supportsIPv6 = false
-    var vpnInterface: String?           // e.g. "utun4" while a VPN is connected
-    var vpnAddress: String?             // the tunnel's IPv4 address
+    var vpnInterface: String?  // e.g. "utun4" while a VPN is connected
+    var vpnAddress: String?  // the tunnel's IPv4 address
     var isConnected: Bool { interfaceName != nil }
     var isVPNConnected: Bool { vpnInterface != nil }
 }
@@ -98,10 +98,12 @@ final class NetworkProvider: @unchecked Sendable {
                 let header = raw.loadUnaligned(fromByteOffset: offset, as: if_msghdr.self)
                 guard header.ifm_msglen > 0 else { break }
                 if Int32(header.ifm_type) == RTM_IFINFO2,
-                   offset + MemoryLayout<if_msghdr2>.size <= length {
+                    offset + MemoryLayout<if_msghdr2>.size <= length
+                {
                     let msg = raw.loadUnaligned(fromByteOffset: offset, as: if_msghdr2.self)
                     if if_indextoname(UInt32(msg.ifm_index), &nameBuffer) != nil,
-                       String(cString: nameBuffer).hasPrefix("en") {
+                        String(cString: nameBuffer).hasPrefix("en")
+                    {
                         rx &+= msg.ifm_data.ifi_ibytes
                         tx &+= msg.ifm_data.ifi_obytes
                     }
@@ -126,11 +128,15 @@ final class NetworkProvider: @unchecked Sendable {
             let ifa = ptr.pointee
             let name = String(cString: ifa.ifa_name)
             guard let addr = ifa.ifa_addr, Int32(addr.pointee.sa_family) == AF_INET,
-                  Int32(ifa.ifa_flags) & upAndRunning == upAndRunning,
-                  prefixes.contains(where: name.hasPrefix) else { continue }
+                Int32(ifa.ifa_flags) & upAndRunning == upAndRunning,
+                prefixes.contains(where: name.hasPrefix)
+            else { continue }
             var host = [CChar](repeating: 0, count: Int(NI_MAXHOST))
-            guard getnameinfo(addr, socklen_t(MemoryLayout<sockaddr_in>.size), &host, socklen_t(host.count),
-                              nil, 0, NI_NUMERICHOST) == 0 else { continue }
+            guard
+                getnameinfo(
+                    addr, socklen_t(MemoryLayout<sockaddr_in>.size), &host, socklen_t(host.count),
+                    nil, 0, NI_NUMERICHOST) == 0
+            else { continue }
             return (name, String(cString: host))
         }
         return nil
@@ -155,7 +161,7 @@ final class NetworkProvider: @unchecked Sendable {
             if family == AF_INET, v4 == nil {
                 v4 = text
             } else if family == AF_INET6, v6 == nil, !text.hasPrefix("fe80") {
-                v6 = text   // skip link-local; keep the first global address
+                v6 = text  // skip link-local; keep the first global address
             }
         }
         return (v4, v6)
@@ -168,9 +174,10 @@ enum PublicIPService {
         request.timeoutInterval = 5
         request.cachePolicy = .reloadIgnoringLocalCacheData
         guard let (data, response) = try? await URLSession.shared.data(for: request),
-              (response as? HTTPURLResponse)?.statusCode == 200,
-              let ip = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !ip.isEmpty, ip.count <= 45 else { return nil }
+            (response as? HTTPURLResponse)?.statusCode == 200,
+            let ip = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
+            !ip.isEmpty, ip.count <= 45
+        else { return nil }
         return ip
     }
 }

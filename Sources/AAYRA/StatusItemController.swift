@@ -8,7 +8,7 @@ final class FloatingPanel: NSPanel {
         super.init(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: true)
         isOpaque = false
         backgroundColor = .clear
-        hasShadow = false                 // each card draws its own depth
+        hasShadow = false  // each card draws its own depth
         level = .popUpMenu
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient, .ignoresCycle]
         isReleasedWhenClosed = false
@@ -30,7 +30,7 @@ final class StatusItemController: NSObject {
     private static let maxSpeed = 450.0
     private static let maxFPS = 15.0
     private static let minFPS = 4.0
-    private static let targetStep = 22.5           // degrees per frame we aim for before raising fps
+    private static let targetStep = 22.5  // degrees per frame we aim for before raising fps
     private static let blurThreshold = 0.8
 
     private let monitor: SystemMonitor
@@ -75,30 +75,35 @@ final class StatusItemController: NSObject {
             button.sendAction(on: [.leftMouseUp, .rightMouseUp])
         }
 
-        NotificationCenter.default.addObserver(self, selector: #selector(appDidResignActive),
-                                               name: NSApplication.didResignActiveNotification, object: nil)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(appDidResignActive),
+            name: NSApplication.didResignActiveNotification, object: nil)
         // AAYRA usually isn't the active app while the panel is open, so also close it when you
         // switch to another app (⌘-Tab, Dock, Mission Control).
-        NSWorkspace.shared.notificationCenter.addObserver(self, selector: #selector(otherAppActivated(_:)),
-                                                          name: NSWorkspace.didActivateApplicationNotification,
-                                                          object: nil)
-        NotificationCenter.default.addObserver(self, selector: #selector(appDidResignActive),
-                                               name: .aayraClosePanel, object: nil)
+        NSWorkspace.shared.notificationCenter.addObserver(
+            self, selector: #selector(otherAppActivated(_:)),
+            name: NSWorkspace.didActivateApplicationNotification,
+            object: nil)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(appDidResignActive),
+            name: .aayraClosePanel, object: nil)
         hotKey = GlobalHotKey { [weak self] in
             MainActor.assumeIsolated { self?.togglePanel() }
         }
         applyShortcut()
         // Pick up a new shortcut from Settings straight away.
-        NotificationCenter.default.addObserver(self, selector: #selector(applyShortcut),
-                                               name: UserDefaults.didChangeNotification, object: nil)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(applyShortcut),
+            name: UserDefaults.didChangeNotification, object: nil)
 
         let center = NSWorkspace.shared.notificationCenter
         center.addObserver(self, selector: #selector(pause), name: NSWorkspace.screensDidSleepNotification, object: nil)
         center.addObserver(self, selector: #selector(pause), name: NSWorkspace.sessionDidResignActiveNotification, object: nil)
         center.addObserver(self, selector: #selector(resume), name: NSWorkspace.screensDidWakeNotification, object: nil)
         center.addObserver(self, selector: #selector(resume), name: NSWorkspace.sessionDidBecomeActiveNotification, object: nil)
-        center.addObserver(self, selector: #selector(accessibilityChanged),
-                           name: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification, object: nil)
+        center.addObserver(
+            self, selector: #selector(accessibilityChanged),
+            name: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification, object: nil)
 
         updateLabel()
         scheduleNextFrame()
@@ -118,7 +123,7 @@ final class StatusItemController: NSObject {
             MainActor.assumeIsolated { self?.advanceFrame() }
         }
         timer.tolerance = 0.1 / fps
-        RunLoop.main.add(timer, forMode: .common)   // keeps spinning while menus are tracking
+        RunLoop.main.add(timer, forMode: .common)  // keeps spinning while menus are tracking
         frameTimer = timer
     }
 
@@ -134,7 +139,7 @@ final class StatusItemController: NSObject {
             let index = Int(angle / SpinnerFrames.degreesPerFrame)
             statusItem.button?.image = SpinnerFrames.frame(at: index, blurred: load > Self.blurThreshold)
         } else if angle != 0, !isScreenAsleep {
-            angle = 0                                         // animation switched off: rest upright
+            angle = 0  // animation switched off: rest upright
             statusItem.button?.image = SpinnerFrames.frame(at: 0, blurred: false)
         }
         updateLabel()
@@ -165,7 +170,7 @@ final class StatusItemController: NSObject {
 
     private func makeNetworkItem() -> NSStatusItem {
         let item = NSStatusBar.system.statusItem(withLength: Self.networkItemLength)
-        item.autosaveName = "AAYRANetworkSpeed"   // remembers where the user ⌘-drags it
+        item.autosaveName = "AAYRANetworkSpeed"  // remembers where the user ⌘-drags it
         if let button = item.button {
             button.imagePosition = .imageOnly
             button.target = self
@@ -180,7 +185,8 @@ final class StatusItemController: NSObject {
         let percent = Int((monitor.cpu.total * 100).rounded())
         let showsPercent = showsPercent
         guard percent != lastShownPercent || showsPercent != lastShowsPercent,
-              let button = statusItem.button else { return }
+            let button = statusItem.button
+        else { return }
         lastShownPercent = percent
         lastShowsPercent = showsPercent
         button.setAccessibilityLabel("CPU usage \(percent) percent")
@@ -216,8 +222,8 @@ final class StatusItemController: NSObject {
             closePanel()
             let item = sender == networkItem?.button ? networkItem! : statusItem
             item.menu = contextMenu
-            sender.performClick(nil)       // shows the menu
-            item.menu = nil                // restore left-click → panel
+            sender.performClick(nil)  // shows the menu
+            item.menu = nil  // restore left-click → panel
         } else if panel.isVisible {
             closePanel()
         } else {
@@ -246,7 +252,7 @@ final class StatusItemController: NSObject {
             self?.placePanel(size: size)
         }
         let host = NSHostingView(rootView: root)
-        host.sizingOptions = []            // the window follows the content size via placePanel
+        host.sizingOptions = []  // the window follows the content size via placePanel
         panel.contentView = host
         placePanel(size: host.fittingSize)
 
@@ -269,24 +275,27 @@ final class StatusItemController: NSObject {
         statusItem.button?.highlight(false)
         monitor.panelDidClose()
         let generation = panelGeneration
-        NSAnimationContext.runAnimationGroup({ context in
-            context.duration = 0.12
-            panel.animator().alphaValue = 0
-        }, completionHandler: { [weak self] in
-            MainActor.assumeIsolated {
-                // Skip if the panel was reopened while fading out.
-                guard let self, self.panelGeneration == generation else { return }
-                self.panel.orderOut(nil)
-                self.panel.contentView = nil
-            }
-        })
+        NSAnimationContext.runAnimationGroup(
+            { context in
+                context.duration = 0.12
+                panel.animator().alphaValue = 0
+            },
+            completionHandler: { [weak self] in
+                MainActor.assumeIsolated {
+                    // Skip if the panel was reopened while fading out.
+                    guard let self, self.panelGeneration == generation else { return }
+                    self.panel.orderOut(nil)
+                    self.panel.contentView = nil
+                }
+            })
     }
 
     /// Keeps the panel just below the menu bar, centred on the icon and inside the screen,
     /// with its top edge fixed as the content grows or shrinks.
     private func placePanel(size: CGSize) {
         guard size.width > 0, size.height > 0, let buttonWindow = statusItem.button?.window,
-              let screen = buttonWindow.screen ?? NSScreen.main else { return }
+            let screen = buttonWindow.screen ?? NSScreen.main
+        else { return }
         let visible = screen.visibleFrame
         let x = min(max(buttonWindow.frame.midX - size.width / 2, visible.minX), visible.maxX - size.width)
         let frame = NSRect(x: x.rounded(), y: (visible.maxY - size.height).rounded(), width: size.width, height: size.height)
@@ -296,37 +305,43 @@ final class StatusItemController: NSObject {
     /// Closes on a click anywhere outside the panel (and its detail popovers), or on Escape.
     private func installEventMonitors() {
         removeEventMonitors()
-        if let global = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown],
-                                                          handler: { [weak self] event in
-            let location = event.locationInWindow     // screen coordinates for events in other apps
-            MainActor.assumeIsolated {
-                guard let self else { return }
-                // The click that opened the panel can reach this monitor too (the menu bar is drawn by
-                // another process); clicks on our own icon are handled by the button instead.
-                let icons = [self.statusItem.button?.window?.frame, self.networkItem?.button?.window?.frame]
-                if icons.contains(where: { $0?.contains(location) == true }) { return }
-                self.closePanel()
-            }
-        }) {
+        if let global = NSEvent.addGlobalMonitorForEvents(
+            matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown],
+            handler: { [weak self] event in
+                let location = event.locationInWindow  // screen coordinates for events in other apps
+                MainActor.assumeIsolated {
+                    guard let self else { return }
+                    // The click that opened the panel can reach this monitor too (the menu bar is drawn by
+                    // another process); clicks on our own icon are handled by the button instead.
+                    let icons = [self.statusItem.button?.window?.frame, self.networkItem?.button?.window?.frame]
+                    if icons.contains(where: { $0?.contains(location) == true }) { return }
+                    self.closePanel()
+                }
+            })
+        {
             eventMonitors.append(global)
         }
-        if let local = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown, .keyDown],
-                                                        handler: { [weak self] event in
-            let isEscape = event.type == .keyDown && event.keyCode == 53
-            let isKey = event.type == .keyDown
-            let window = event.window
-            let swallow = MainActor.assumeIsolated { () -> Bool in
-                guard let self else { return false }
-                if isEscape { self.closePanel(); return true }
-                if isKey { return false }
-                let isOurs = window != nil && (window == self.panel || window == self.statusItem.button?.window
-                    || window == self.networkItem?.button?.window
-                    || (self.panel.childWindows ?? []).contains(window!))
-                if !isOurs { self.closePanel() }
-                return false
-            }
-            return swallow ? nil : event
-        }) {
+        if let local = NSEvent.addLocalMonitorForEvents(
+            matching: [.leftMouseDown, .rightMouseDown, .keyDown],
+            handler: { [weak self] event in
+                let isEscape = event.type == .keyDown && event.keyCode == 53
+                let isKey = event.type == .keyDown
+                let window = event.window
+                let swallow = MainActor.assumeIsolated { () -> Bool in
+                    guard let self else { return false }
+                    if isEscape { self.closePanel(); return true }
+                    if isKey { return false }
+                    let isOurs =
+                        window != nil
+                        && (window == self.panel || window == self.statusItem.button?.window
+                            || window == self.networkItem?.button?.window
+                            || (self.panel.childWindows ?? []).contains(window!))
+                    if !isOurs { self.closePanel() }
+                    return false
+                }
+                return swallow ? nil : event
+            })
+        {
             eventMonitors.append(local)
         }
     }
@@ -384,8 +399,9 @@ enum NetworkSpeedImage {
             for (row, (symbol, text)) in [("↑", up), ("↓", down)].enumerated() {
                 let y = row == 0 ? lineHeight : 0
                 (symbol as NSString).draw(at: NSPoint(x: 0, y: y), withAttributes: arrow)
-                (text as NSString).draw(in: NSRect(x: 9, y: y, width: rect.width - 9, height: lineHeight),
-                                        withAttributes: value)
+                (text as NSString).draw(
+                    in: NSRect(x: 9, y: y, width: rect.width - 9, height: lineHeight),
+                    withAttributes: value)
             }
             return true
         }

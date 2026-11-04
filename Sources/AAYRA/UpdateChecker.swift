@@ -15,7 +15,7 @@ final class UpdateChecker {
         case idle
         case checking
         case upToDate
-        case noReleases                         // the repo hasn't published a release yet
+        case noReleases  // the repo hasn't published a release yet
         case available(version: String, url: URL)
         case failed(String)
     }
@@ -25,7 +25,7 @@ final class UpdateChecker {
 
     /// The newer version found by the last check, if any (also remembered between launches).
     var availableUpdate: (version: String, url: URL)? {
-        if case let .available(version, url) = status { return (version, url) }
+        if case .available(let version, let url) = status { return (version, url) }
         return nil
     }
 
@@ -38,8 +38,9 @@ final class UpdateChecker {
         lastChecked = defaults.object(forKey: AppSettings.Key.lastUpdateCheck) as? Date
         // Keep showing an update found earlier, as long as it's still newer than this build.
         if let version = defaults.string(forKey: AppSettings.Key.latestKnownVersion),
-           let link = defaults.string(forKey: AppSettings.Key.latestKnownURL), let url = URL(string: link),
-           Self.isVersion(version, newerThan: AppInfo.version) {
+            let link = defaults.string(forKey: AppSettings.Key.latestKnownURL), let url = URL(string: link),
+            Self.isVersion(version, newerThan: AppInfo.version)
+        {
             status = .available(version: version, url: url)
         }
     }
@@ -48,13 +49,14 @@ final class UpdateChecker {
     func startAutomaticChecks() {
         guard loop == nil else { return }
         loop = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(10))      // let the app settle after launch
+            try? await Task.sleep(for: .seconds(10))  // let the app settle after launch
             while !Task.isCancelled {
                 if let self, AppSettings.checkForUpdates,
-                   Date().timeIntervalSince(self.lastChecked ?? .distantPast) >= Self.checkEvery {
+                    Date().timeIntervalSince(self.lastChecked ?? .distantPast) >= Self.checkEvery
+                {
                     await self.check()
                 }
-                try? await Task.sleep(for: .seconds(60 * 60))   // re-evaluate hourly
+                try? await Task.sleep(for: .seconds(60 * 60))  // re-evaluate hourly
             }
         }
     }
@@ -69,7 +71,7 @@ final class UpdateChecker {
         status = .checking
         var request = URLRequest(url: Self.api, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 15)
         request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
-        request.setValue("AAYRA/\(AppInfo.version)", forHTTPHeaderField: "User-Agent")   // GitHub asks for one
+        request.setValue("AAYRA/\(AppInfo.version)", forHTTPHeaderField: "User-Agent")  // GitHub asks for one
 
         do {
             let (data, response) = try await URLSession.shared.data(for: request)

@@ -5,9 +5,9 @@ import IOKit.ps
 struct BatteryStats: Equatable {
     enum State: Equatable { case charging, charged, onBattery, pluggedNotCharging }
 
-    var charge: Double = 0                 // 0...1
+    var charge: Double = 0  // 0...1
     var state: State = .onBattery
-    var minutesToEmpty: Int?               // nil while macOS is still calculating
+    var minutesToEmpty: Int?  // nil while macOS is still calculating
     var minutesToFull: Int?
     var cycleCount: Int?
     var designCycles: Int?
@@ -30,13 +30,13 @@ struct BatteryStats: Equatable {
 
     // Live electrical readings
     var voltage_mV: Int?
-    var current_mA: Int?                   // negative while discharging
+    var current_mA: Int?  // negative while discharging
     var cellVoltages_mV: [Int] = []
     var remaining_mAh: Int?
     var rawMax_mAh: Int?
-    var systemLoadWatts: Double?           // what the whole Mac is drawing
-    var adapterInputWatts: Double?         // power coming in from the charger
-    var dailyMinSoc: Int?                  // today's lowest / highest charge, percent
+    var systemLoadWatts: Double?  // what the whole Mac is drawing
+    var adapterInputWatts: Double?  // power coming in from the charger
+    var dailyMinSoc: Int?  // today's lowest / highest charge, percent
     var dailyMaxSoc: Int?
 
     // Lifetime record kept by the battery's fuel gauge
@@ -76,11 +76,13 @@ enum BatteryProvider {
 
     private static func powerSourceStats() -> BatteryStats? {
         guard let blob = IOPSCopyPowerSourcesInfo()?.takeRetainedValue(),
-              let list = IOPSCopyPowerSourcesList(blob)?.takeRetainedValue() as? [CFTypeRef] else { return nil }
+            let list = IOPSCopyPowerSourcesList(blob)?.takeRetainedValue() as? [CFTypeRef]
+        else { return nil }
 
         for source in list {
             guard let desc = IOPSGetPowerSourceDescription(blob, source)?.takeUnretainedValue() as? [String: Any],
-                  desc[kIOPSTypeKey] as? String == kIOPSInternalBatteryType else { continue }
+                desc[kIOPSTypeKey] as? String == kIOPSInternalBatteryType
+            else { continue }
 
             var s = BatteryStats()
             let current = desc[kIOPSCurrentCapacityKey] as? Int ?? 0
@@ -132,7 +134,7 @@ enum BatteryProvider {
         s.designCapacity_mAh = lookup("DesignCapacity")
         s.currentCapacity_mAh = lookup("NominalChargeCapacity") ?? lookup("AppleRawMaxCapacity")
         if let t = lookup("Temperature") ?? lookup("VirtualTemperature"), t > 0 {
-            s.temperatureC = Double(t) / 100   // reported in centi-degrees Celsius
+            s.temperatureC = Double(t) / 100  // reported in centi-degrees Celsius
         }
         if s.isPluggedIn {
             let details = sources.lazy.compactMap { $0["AdapterDetails"] as? [String: Any] }.first
@@ -160,7 +162,7 @@ enum BatteryProvider {
         s.dailyMaxSoc = lookup("DailyMaxSoc")
         s.lifetimeMinTempC = lookup("MinimumTemperature")
         s.lifetimeMaxTempC = lookup("MaximumTemperature")
-        s.lifetimeAvgTempC = lookup("AverageTemperature").map { Double($0) / 10 }   // tenths of °C
+        s.lifetimeAvgTempC = lookup("AverageTemperature").map { Double($0) / 10 }  // tenths of °C
         s.maxChargeCurrent_mA = lookup("MaximumChargeCurrent")
         s.maxDischargeCurrent_mA = lookup("MaximumDischargeCurrent")
         s.minPackVoltage_mV = lookup("MinimumPackVoltage")
@@ -189,15 +191,18 @@ enum BatteryProvider {
         var parts = DateComponents(year: year, month: month, day: day)
         parts.calendar = Calendar(identifier: .gregorian)
         guard (1...12).contains(month), (1...31).contains(day), parts.isValidDate,
-              let date = parts.date, date <= Date(), year >= 2010 else { return nil }
+            let date = parts.date, date <= Date(), year >= 2010
+        else { return nil }
         return date
     }
 
     /// Apple battery serials start with a three-character code for the pack assembler
     /// (the same source coconutBattery uses). Only well-documented codes are listed.
     static func packAssembler(fromSerial serial: String) -> String? {
-        let codes = ["F8Y": "Sunwoda", "F5D": "Sunwoda", "D86": "Desay", "D3H": "Desay",
-                     "C01": "Simplo", "C32": "Simplo"]
+        let codes = [
+            "F8Y": "Sunwoda", "F5D": "Sunwoda", "D86": "Desay", "D3H": "Desay",
+            "C01": "Simplo", "C32": "Simplo",
+        ]
         return codes[String(serial.prefix(3)).uppercased()]
     }
 
@@ -219,23 +224,29 @@ enum BatteryProvider {
             i += 1
         }
         guard let code = fields.last(where: { $0.allSatisfy(\.isLetter) }) else { return nil }
-        let names = ["ATL": "ATL (Amperex)", "SMP": "Simplo", "SWD": "Sunwoda", "DSY": "Desay",
-                     "LGC": "LG Chem", "SDI": "Samsung SDI", "SNY": "Sony", "BYD": "BYD", "COS": "Coslight"]
+        let names = [
+            "ATL": "ATL (Amperex)", "SMP": "Simplo", "SWD": "Sunwoda", "DSY": "Desay",
+            "LGC": "LG Chem", "SDI": "Samsung SDI", "SNY": "Sony", "BYD": "BYD", "COS": "Coslight",
+        ]
         return names[code] ?? code
     }
 
     /// Each AppleSmartBatteryBank (one per cell group) reports its own cell voltage.
     private static func cellVoltages() -> [Int] {
         var iterator: io_iterator_t = 0
-        guard IOServiceGetMatchingServices(kIOMainPortDefault, IOServiceMatching("AppleSmartBatteryBank"),
-                                           &iterator) == KERN_SUCCESS else { return [] }
+        guard
+            IOServiceGetMatchingServices(
+                kIOMainPortDefault, IOServiceMatching("AppleSmartBatteryBank"),
+                &iterator) == KERN_SUCCESS
+        else { return [] }
         defer { IOObjectRelease(iterator) }
         var voltages: [Int] = []
         while case let service = IOIteratorNext(iterator), service != 0 {
             defer { IOObjectRelease(service) }
             if let data = IORegistryEntryCreateCFProperty(service, "BatteryData" as CFString, kCFAllocatorDefault, 0)?
                 .takeRetainedValue() as? [String: Any],
-               let mV = (data["CellVoltage"] as? NSNumber)?.intValue, mV > 0 {
+                let mV = (data["CellVoltage"] as? NSNumber)?.intValue, mV > 0
+            {
                 voltages.append(mV)
             }
         }
@@ -270,13 +281,14 @@ enum BatteryProvider {
                 process.waitUntilExit()
 
                 guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                      let items = root["SPPowerDataType"] as? [[String: Any]],
-                      let info = items.lazy.compactMap({ $0["sppower_battery_health_info"] as? [String: Any] }).first
+                    let items = root["SPPowerDataType"] as? [[String: Any]],
+                    let info = items.lazy.compactMap({ $0["sppower_battery_health_info"] as? [String: Any] }).first
                 else { continuation.resume(returning: nil); return }
 
                 var result = ReportedHealth()
                 if let text = info["sppower_battery_health_maximum_capacity"] as? String,
-                   let pct = Double(text.filter { $0.isNumber || $0 == "." }) {
+                    let pct = Double(text.filter { $0.isNumber || $0 == "." })
+                {
                     result.maximumCapacity = pct / 100
                 }
                 result.condition = info["sppower_battery_health"] as? String

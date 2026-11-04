@@ -95,7 +95,7 @@ enum Format {
         let f = MeasurementFormatter()
         f.unitStyle = .short
         f.numberFormatter.maximumFractionDigits = 1
-        return f   // converts °C to °F automatically for regions that use it
+        return f  // converts °C to °F automatically for regions that use it
     }()
 
     private static let fixedTemperatureFormatter: MeasurementFormatter = {

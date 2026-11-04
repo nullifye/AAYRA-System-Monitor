@@ -1,4 +1,5 @@
 import Testing
+
 @testable import AAYRA
 
 /// Formatters used across the cards and detail panels. Only formats that don't depend on the
@@ -9,9 +10,9 @@ struct FormatTests {
         (999, "999 B"),
         (1_500, "1.5 KB"),
         (2_730_000_000, "2.7 GB"),
-        (204_670_000_000, "205 GB"),          // three digits: no decimal
+        (204_670_000_000, "205 GB"),  // three digits: no decimal
         (1_200_000_000_000, "1.2 TB"),
-        (-5, "0 B"),                          // never negative
+        (-5, "0 B"),  // never negative
     ])
     func diskShort(bytes: Int64, expected: String) {
         #expect(Format.diskShort(bytes) == expected)
@@ -50,7 +51,7 @@ struct FormatTests {
 
     @Test func electrical() {
         #expect(Format.volts(12_460) == "12.46 V")
-        #expect(Format.amps(-990) == "0.99 A")      // direction is shown elsewhere
+        #expect(Format.amps(-990) == "0.99 A")  // direction is shown elsewhere
         #expect(Format.amps(5_300) == "5.30 A")
         #expect(Format.onOff(true) == "On")
         #expect(Format.onOff(false) == "Off")

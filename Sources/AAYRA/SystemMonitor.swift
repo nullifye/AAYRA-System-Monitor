@@ -71,7 +71,7 @@ final class SystemMonitor {
     init() {
         performanceCores = cpuProvider.performanceCores
         efficiencyCores = cpuProvider.efficiencyCores
-        _ = cpuProvider.sample()            // prime the tick baseline
+        _ = cpuProvider.sample()  // prime the tick baseline
         _ = networkProvider.sample()
         _ = diskIOProvider.sample()
         gpu = GPUProvider.sample()
@@ -82,8 +82,10 @@ final class SystemMonitor {
         wifiProvider.onAuthorizationChange = { [weak self] in self?.refreshWiFiName() }
         // Update the volume list the moment a drive is plugged in, ejected or renamed.
         let workspace = NSWorkspace.shared.notificationCenter
-        for name in [NSWorkspace.didMountNotification, NSWorkspace.didUnmountNotification,
-                     NSWorkspace.didRenameVolumeNotification] {
+        for name in [
+            NSWorkspace.didMountNotification, NSWorkspace.didUnmountNotification,
+            NSWorkspace.didRenameVolumeNotification,
+        ] {
             workspace.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
                 MainActor.assumeIsolated { self?.volumes = VolumeProvider.sample() }
             }
@@ -145,14 +147,14 @@ final class SystemMonitor {
         diskIO = diskIOProvider.sample()
         push(&diskReadHistory, diskIO.readBytesPerSec)
         push(&diskWriteHistory, diskIO.writeBytesPerSec)
-        if network.interfaceName != previousInterface {   // network changed
+        if network.interfaceName != previousInterface {  // network changed
             publicIPFetchedAt = nil
             refreshWiFiName()
         }
 
         if Self.isDue(lastSlowRefresh, every: 10, now: now) { refreshSlowMetrics() }
-        if Self.isDue(lastSSDRefresh, every: 60, now: now) { refreshSSD() }      // SMART changes slowly
-        if Self.isDue(lastHealthRefresh, every: 1800, now: now) {                // every 30 min
+        if Self.isDue(lastSSDRefresh, every: 60, now: now) { refreshSSD() }  // SMART changes slowly
+        if Self.isDue(lastHealthRefresh, every: 1800, now: now) {  // every 30 min
             lastHealthRefresh = now
             Task { await refreshReportedHealth() }
         }
@@ -201,7 +203,7 @@ final class SystemMonitor {
     /// Called when the panel opens: refresh slow values right away and fetch the public IP if stale.
     func panelDidOpen() {
         isPanelOpen = true
-        sampleProcesses()   // CPU ranking appears on the next sample (needs two readings)
+        sampleProcesses()  // CPU ranking appears on the next sample (needs two readings)
         refreshNetworkDetails()
         refreshSlowMetrics()
         refreshSSD()
@@ -210,8 +212,9 @@ final class SystemMonitor {
     }
 
     private func refreshNetworkDetails() {
-        networkDetails = NetworkDetailsProvider.sample(interface: network.interfaceName,
-                                                       isWiFi: network.interfaceKind == "Wi-Fi")
+        networkDetails = NetworkDetailsProvider.sample(
+            interface: network.interfaceName,
+            isWiFi: network.interfaceKind == "Wi-Fi")
     }
 
     private func sampleProcesses() {

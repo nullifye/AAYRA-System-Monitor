@@ -158,6 +158,7 @@ final class SystemMonitor {
             lastHealthRefresh = now
             Task { await refreshReportedHealth() }
         }
+        AlertCenter.shared.check(self)  // does nothing unless alerts are turned on in Settings
     }
 
     private func refreshSSD() {

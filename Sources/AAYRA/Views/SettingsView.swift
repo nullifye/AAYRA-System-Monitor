@@ -38,6 +38,15 @@ struct SettingsView: View {
     @AppStorage(AppSettings.Key.showPercentInMenuBar) private var showPercent = false
     @AppStorage(AppSettings.Key.showNetworkInMenuBar) private var showNetworkSpeed = false
     @AppStorage(AppSettings.Key.checkForUpdates) private var checkForUpdates = false
+    @AppStorage(AppSettings.Key.alertBatteryLow) private var alertBattery = false
+    @AppStorage(AppSettings.Key.alertBatteryThreshold) private var alertBatteryThreshold = 20
+    @AppStorage(AppSettings.Key.alertDiskFull) private var alertDisk = false
+    @AppStorage(AppSettings.Key.alertDiskThresholdGB) private var alertDiskThreshold = 10
+    @AppStorage(AppSettings.Key.alertMemoryPressure) private var alertMemory = false
+    @AppStorage(AppSettings.Key.alertMemoryCriticalOnly) private var alertMemoryCriticalOnly = false
+    @AppStorage(AppSettings.Key.alertCPUBusy) private var alertCPU = false
+    @AppStorage(AppSettings.Key.alertCPUMinutes) private var alertCPUMinutes = 5
+    private var alerts = AlertCenter.shared
     private var updates = UpdateChecker.shared
     @AppStorage(AppSettings.Key.shortcut) private var shortcut = AppSettings.Shortcut.optionCommandM.rawValue
     @AppStorage(AppSettings.Key.refreshInterval) private var refreshInterval = 1.0
@@ -146,6 +155,8 @@ struct SettingsView: View {
                 }
             }
 
+            alertsSection
+
             Section {
                 Toggle("Show public IP address", isOn: $fetchPublicIP)
             } header: {
@@ -194,6 +205,58 @@ struct SettingsView: View {
         }
         .formStyle(.grouped)
         .frame(width: 460, height: 700)
+    }
+
+    /// Alerts: each one off by default; turning one on reveals its threshold.
+    private var alertsSection: some View {
+        Section {
+            if hasBattery {
+                Toggle("Low battery", isOn: $alertBattery)
+                if alertBattery {
+                    Picker("Alert at", selection: $alertBatteryThreshold) {
+                        ForEach([10, 15, 20, 30], id: \.self) { Text("\($0)%").tag($0) }
+                    }
+                }
+            }
+            Toggle("Startup disk almost full", isOn: $alertDisk)
+            if alertDisk {
+                Picker("Alert below", selection: $alertDiskThreshold) {
+                    ForEach([5, 10, 20, 50], id: \.self) { Text("\($0) GB free").tag($0) }
+                }
+            }
+            Toggle("High memory pressure", isOn: $alertMemory)
+            if alertMemory {
+                Picker("Alert when pressure is", selection: $alertMemoryCriticalOnly) {
+                    Text("High").tag(false)
+                    Text("Critical").tag(true)
+                }
+            }
+            Toggle("CPU busy for a long time", isOn: $alertCPU)
+            if alertCPU {
+                Picker("Alert after", selection: $alertCPUMinutes) {
+                    ForEach([2, 5, 10, 15], id: \.self) { Text("\($0) minutes above 90%").tag($0) }
+                }
+            }
+            if alerts.authorization == .denied, alertBattery || alertDisk || alertMemory || alertCPU {
+                HStack {
+                    Label("Notifications are off for AAYRA", systemImage: "bell.slash.fill")
+                        .foregroundStyle(.orange)
+                    Spacer()
+                    Button("Open Settings…") { SystemActions.openNotificationSettings() }
+                }
+            }
+        } header: {
+            Text("Alerts")
+        } footer: {
+            Text(
+                "Shown as macOS notifications. Each alert appears once, then waits until things are back to normal; "
+                    + "memory and CPU alerts repeat at most every 30 minutes."
+            )
+            .foregroundStyle(.secondary)
+        }
+        .onChange(of: [alertBattery, alertDisk, alertMemory, alertCPU]) { _, on in
+            if on.contains(true) { alerts.requestAuthorization() }
+        }
     }
 
     /// Result of the last update check, in one line.

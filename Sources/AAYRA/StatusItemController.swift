@@ -87,6 +87,10 @@ final class StatusItemController: NSObject {
         NotificationCenter.default.addObserver(
             self, selector: #selector(appDidResignActive),
             name: .aayraClosePanel, object: nil)
+        // Clicking an alert notification opens the panel.
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(showPanelFromAlert),
+            name: .aayraShowPanel, object: nil)
         hotKey = GlobalHotKey { [weak self] in
             MainActor.assumeIsolated { self?.togglePanel() }
         }
@@ -353,6 +357,10 @@ final class StatusItemController: NSObject {
 
     @objc private func appDidResignActive() { closePanel() }
 
+    @objc private func showPanelFromAlert() {
+        if !panel.isVisible { showPopover() }
+    }
+
     @objc private func otherAppActivated(_ notification: Notification) {
         let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
         if app?.processIdentifier != ProcessInfo.processInfo.processIdentifier { closePanel() }
@@ -417,6 +425,12 @@ enum SystemActions {
         case battery = "com.apple.Battery-Settings.extension"
         case network = "com.apple.Network-Settings.extension"
         case wifi = "com.apple.wifi-settings-extension"
+    }
+
+    @MainActor static func openNotificationSettings() {
+        if let url = URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings.extension?id=com.raf.aayra") {
+            NSWorkspace.shared.open(url)
+        }
     }
 
     @MainActor static func openSettings(_ pane: SettingsPane) {

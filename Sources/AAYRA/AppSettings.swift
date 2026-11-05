@@ -15,6 +15,14 @@ enum AppSettings {
         static let refreshInterval = "refreshInterval"
         static let fetchPublicIP = "fetchPublicIP"
         static let temperatureUnit = "temperatureUnit"
+        static let alertBatteryLow = "alertBatteryLow"
+        static let alertBatteryThreshold = "alertBatteryThreshold"
+        static let alertDiskFull = "alertDiskFull"
+        static let alertDiskThresholdGB = "alertDiskThresholdGB"
+        static let alertMemoryPressure = "alertMemoryPressure"
+        static let alertMemoryCriticalOnly = "alertMemoryCriticalOnly"
+        static let alertCPUBusy = "alertCPUBusy"
+        static let alertCPUMinutes = "alertCPUMinutes"
         static func showsSection(_ kind: DetailKind) -> String { "showSection.\(kind)" }
     }
 

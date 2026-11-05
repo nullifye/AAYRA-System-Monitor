@@ -19,6 +19,7 @@ Native Swift and SwiftUI · Apple Silicon · macOS 15 or later · under 1 MB
 - 🧠 **CPU and memory.** Usage history, per-core load grouped by Performance and Efficiency cores, chip and cache details, thermal state, and top processes by CPU and by memory. Helper processes are added up under their app's real name (e.g. *Visual Studio Code · 16*), like Activity Monitor. Memory shows app / wired / compressed / cached, pressure and swap.
 - 🎮 **GPU.** Live GPU load with a history chart, split into renderer (pixels) and tiler (geometry) work, plus the unified memory the GPU is using and allocated, core count and GPU restarts. Read from the graphics driver, no admin rights needed. The card is off by default; turn it on in Settings → Sections.
 - 🌐 **Network.** Live ↓/↑ speed chart, Wi-Fi name, signal, noise and SNR, channel and band, standard, security, local and public IP (click to copy), router, DNS and MAC. A **VPN** badge appears while a VPN is connected.
+- 🔔 **Optional alerts.** You can turn on macOS notifications for a low battery, the startup disk nearly full, high memory pressure, or the CPU staying above 90% for several minutes. Each alert has its own threshold and is off by default. An alert fires once and waits until things are back to normal before it can fire again. Memory and CPU alerts name the app responsible, and clicking an alert opens the panel.
 - ⚙️ **Settings.** Launch at Login, a keyboard shortcut to open the panel from any app, icon animation, CPU % and network speed in the menu bar, which cards to show, refresh rate (1, 2 or 5 s), temperature unit,, an optional update check (off by default), and an opt-out for the public IP lookup.
 - 🪶 **Light.** About 2–4 % CPU while idling in the menu bar, and the whole app is under 1 MB.
 
@@ -181,6 +182,7 @@ GitHub Actions ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs for
 
 ## Versions
 
+- **Unreleased.** Optional alerts for low battery, nearly-full disk, high memory pressure and long CPU load. CI split into build and release jobs, with a format check.
 - **1.5.** Install with Homebrew (`brew install --cask nullifye/aayra/aayra`). The panel and Settings window open without taking focus from the app you're using, and switching apps closes the panel.
 - **1.4.** Optional update check against GitHub Releases (off by default). GPU card and detail panel (off by default). External drives and other volumes in Storage, with eject. Global keyboard shortcut (⌥⌘M by default) to open the panel. Top Processes rows expand to show an app's individual processes (one at a time). Detail panels respond to the first click and scroll when taller than the screen.
 - **1.3.** Quick-action buttons in detail panels (Manage Storage, Battery and Wi-Fi settings, Activity Monitor), processes grouped under their app's real name, live disk read/write speed, VPN indicator, optional network speed in the menu bar, author and links in Settings, scrolling detail panels on small screens, and charts and background refreshes that follow the refresh-rate setting.

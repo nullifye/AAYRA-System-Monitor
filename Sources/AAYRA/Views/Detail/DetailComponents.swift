@@ -100,20 +100,33 @@ struct DetailPanel<Leading: View, Trailing: View>: View {
 }
 
 /// Small uppercase title above a rounded group of rows separated by hairlines.
-struct DetailSection<Content: View>: View {
+struct DetailSection<Content: View, Accessory: View>: View {
     let title: String
     let content: Content
+    let accessory: Accessory
 
-    init(_ title: String, @ViewBuilder content: () -> Content) {
+    init(_ title: String, @ViewBuilder content: () -> Content) where Accessory == EmptyView {
         self.title = title
         self.content = content()
+        self.accessory = EmptyView()
+    }
+
+    /// A section with a control at the right of its title, e.g. the chart range picker.
+    init(_ title: String, @ViewBuilder accessory: () -> Accessory, @ViewBuilder content: () -> Content) {
+        self.title = title
+        self.content = content()
+        self.accessory = accessory()
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(title)
-                .font(.body.weight(.semibold))
-                .padding(.leading, 2)
+            HStack(alignment: .center, spacing: 8) {
+                Text(title)
+                    .font(.body.weight(.semibold))
+                    .padding(.leading, 2)
+                Spacer(minLength: 0)
+                accessory
+            }
             VStack(alignment: .leading, spacing: 0) {
                 Group(subviews: content) { rows in
                     ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in

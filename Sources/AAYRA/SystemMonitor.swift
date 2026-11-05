@@ -27,6 +27,12 @@ final class SystemMonitor {
     private(set) var network = NetworkStats()
     private(set) var downloadHistory: [Double] = Array(repeating: 0, count: historyLength)
     private(set) var uploadHistory: [Double] = Array(repeating: 0, count: historyLength)
+    /// The last hour of readings with their times, for the detail charts' 1m / 10m / 1h ranges.
+    private(set) var cpuSeries = TimeSeries()
+    private(set) var downloadSeries = TimeSeries()
+    private(set) var uploadSeries = TimeSeries()
+    /// Time of the latest reading in those series (system uptime), so charts line up with the data.
+    private(set) var seriesTime: TimeInterval = ProcessInfo.processInfo.systemUptime
     private(set) var gpu: GPUStats?
     private(set) var gpuHistory: [Double] = Array(repeating: 0, count: historyLength)
     private(set) var diskIO = DiskIO()
@@ -126,6 +132,7 @@ final class SystemMonitor {
         if let sample = cpuProvider.sample() {
             cpu = sample
             push(&cpuHistory, sample.total)
+            cpuSeries.append(sample.total, at: now)
             smoothedCPU += 0.35 * (sample.total - smoothedCPU)
         }
         if let m = MemoryProvider.sample() { memory = m }
@@ -144,6 +151,9 @@ final class SystemMonitor {
         network = networkProvider.sample()
         push(&downloadHistory, network.downloadBytesPerSec)
         push(&uploadHistory, network.uploadBytesPerSec)
+        downloadSeries.append(network.downloadBytesPerSec, at: now)
+        uploadSeries.append(network.uploadBytesPerSec, at: now)
+        seriesTime = now
         diskIO = diskIOProvider.sample()
         push(&diskReadHistory, diskIO.readBytesPerSec)
         push(&diskWriteHistory, diskIO.writeBytesPerSec)

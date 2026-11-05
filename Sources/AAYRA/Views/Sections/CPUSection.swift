@@ -24,6 +24,7 @@ struct CPUDetail: View {
     let monitor: SystemMonitor
     /// The one app in Top Processes that's expanded, if any.
     @State private var expandedProcess: String?
+    @AppStorage(AppSettings.Key.historyRange) private var range = HistoryRange.minute
 
     var body: some View {
         let cpu = monitor.cpu
@@ -32,9 +33,24 @@ struct CPUDetail: View {
             actions: [.activityMonitor]
         ) {
             DetailSection("Usage") {
-                Sparkline(values: monitor.cpuHistory, color: Palette.cpu, height: 34)
-                    .padding(.vertical, 2)
+                HistoryRangePicker(range: $range)
+            } content: {
+                let series = monitor.cpuSeries, now = monitor.seriesTime
+                HistoryChart(
+                    series: [
+                        .init(
+                            name: "CPU", buckets: series.buckets(range.buckets, inLast: range.seconds, now: now),
+                            color: Palette.cpu)
+                    ],
+                    range: range, maxValue: 1
+                )
+                .padding(.vertical, 2)
                 DetailRow("Total", Format.percent(cpu.total))
+                DetailRow(
+                    "Average (\(range.spanText))",
+                    series.average(inLast: range.seconds, now: now).map { Format.percent($0) } ?? "—")
+                DetailRow(
+                    "Peak (\(range.spanText))", series.peak(inLast: range.seconds, now: now).map { Format.percent($0) } ?? "—")
                 DetailRow("User", Format.percent(cpu.user), dot: Palette.cpu)
                 DetailRow("System", Format.percent(cpu.system), dot: Palette.cpuSystem)
                 DetailRow("Idle", Format.percent(max(0, 1 - cpu.total)))
@@ -154,7 +170,7 @@ private struct CoreCluster: View {
                     .accessibilityValue(Format.percent(load))
                 }
             }
-            .animation(.smooth(duration: 0.4), value: loads)
+            // No animation: easing ten bars every second cost about 10 % CPU while this panel was open.
         }
         .padding(.vertical, 3)
     }

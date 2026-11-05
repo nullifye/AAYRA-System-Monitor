@@ -2,7 +2,7 @@
 
 **A tiny menu bar system monitor for macOS.** A turbine in the menu bar spins faster as your CPU works harder. Click it for a dashboard of CPU, storage, memory, battery and network, and click any card for the full details.
 
-Native Swift and SwiftUI · Apple Silicon · macOS 15 or later · under 1 MB
+Native Swift and SwiftUI · Apple Silicon · macOS 15 or later · about 1.2 MB
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/hero-dark.png">
@@ -14,6 +14,7 @@ Native Swift and SwiftUI · Apple Silicon · macOS 15 or later · under 1 MB
 - 🌀 **Live turbine in the menu bar.** It spins slowly when the Mac is idle and speeds up with CPU load, adding motion blur above 80 %. With Reduce Motion on (or the animation turned off), it shows the CPU % as text instead. You can also add live ↑/↓ network speed as a second, compact menu bar item.
 - 🗂 **Floating dashboard.** Cards float under the menu bar like Notification Center, on Liquid Glass in macOS 26 and later. Each card shows one big number with a bar or live chart.
 - 🔎 **Details on click.** Click a card and a two-column detail panel opens beside it, on whichever side has room. The numbers update live, and you can select and copy any value. Header buttons jump straight to the right place: **Manage Storage…**, **Battery Settings…**, **Wi-Fi/Network Settings…** or **Activity Monitor**.
+- 📈 **An hour of history.** The CPU and Network charts switch between the last **1 minute, 10 minutes or 1 hour**, with peak and average for the chosen range. History is recorded in the background, even while the panel is closed.
 - 🔋 **Deep battery info.** Health and condition (matching System Settings), cycles, full-charge vs design capacity, live watts, voltage and current, per-cell voltages, adapter, and lifetime records (temperature range, peak currents, operating hours). It also shows who assembled the pack and who made the cells (e.g. Sunwoda / ATL), plus the estimated manufacture date and age.
 - 💾 **Storage and SSD health.** Live disk read/write speed with a chart. NVMe SMART data: health %, spare capacity, temperature, power-on hours, unsafe shutdowns, media errors, and total data written and read. External drives, disk images and network shares are listed too, with free space, how they're connected (USB, Thunderbolt…) and an eject button.
 - 🧠 **CPU and memory.** Usage history, per-core load grouped by Performance and Efficiency cores, chip and cache details, thermal state, and top processes by CPU and by memory. Helper processes are added up under their app's real name (e.g. *Visual Studio Code · 16*), like Activity Monitor. Memory shows app / wired / compressed / cached, pressure and swap.
@@ -21,7 +22,7 @@ Native Swift and SwiftUI · Apple Silicon · macOS 15 or later · under 1 MB
 - 🌐 **Network.** Live ↓/↑ speed chart, Wi-Fi name, signal, noise and SNR, channel and band, standard, security, local and public IP (click to copy), router, DNS and MAC. A **VPN** badge appears while a VPN is connected.
 - 🔔 **Optional alerts.** You can turn on macOS notifications for a low battery, the startup disk nearly full, high memory pressure, or the CPU staying above 90% for several minutes. Each alert has its own threshold and is off by default. An alert fires once and waits until things are back to normal before it can fire again. Memory and CPU alerts name the app responsible, and clicking an alert opens the panel.
 - ⚙️ **Settings.** Launch at Login, a keyboard shortcut to open the panel from any app, icon animation, CPU % and network speed in the menu bar, which cards to show, refresh rate (1, 2 or 5 s), temperature unit,, an optional update check (off by default), and an opt-out for the public IP lookup.
-- 🪶 **Light.** About 2–4 % CPU while idling in the menu bar, and the whole app is under 1 MB.
+- 🪶 **Light.** About 2–4 % CPU while idling in the menu bar, and the whole app is about 1.2 MB.
 
 ## Install
 
@@ -65,9 +66,9 @@ If you'd rather not run a downloaded app at all, [build it from source](#build-f
 
 | CPU | Memory |
 |:---:|:---:|
-| <img src="docs/screenshots/detail-cpu-dark.png" alt="CPU details: usage history, per-core load by cluster, chip, system and top processes"> | <img src="docs/screenshots/detail-memory-light.png" alt="Memory details: usage breakdown, hardware, pressure and swap, activity and top processes"> |
+| <img src="docs/screenshots/detail-cpu-dark.png" alt="CPU details: usage chart with a 1m / 10m / 1h range, average and peak, per-core load by cluster, chip, system and top apps"> | <img src="docs/screenshots/detail-memory-light.png" alt="Memory details: usage breakdown, hardware, pressure and swap, activity and top processes"> |
 | **Storage** | **Network** |
-| <img src="docs/screenshots/detail-storage-dark.png" alt="Storage details: space, volume, lifetime I/O, drive and SSD health"> | <img src="docs/screenshots/detail-network-light.png" alt="Network details: traffic chart, connection, Wi-Fi and addresses"> |
+| <img src="docs/screenshots/detail-storage-dark.png" alt="Storage details: space, live disk activity, lifetime I/O, drive, SSD health, volume and other volumes"> | <img src="docs/screenshots/detail-network-light.png" alt="Network details: traffic chart with a 1m / 10m / 1h range, connection and VPN status, Wi-Fi and addresses"> |
 
 ### Menu bar turbine
 
@@ -85,6 +86,8 @@ The animation frames, sharp (top row) and with motion blur under heavy load (bot
 | Show details | Click any card. Click it again, or anywhere else, to close |
 | Copy an IP address | Click it (it turns bold for a moment) |
 | See an app's processes | Click an app in Top Processes (CPU or Memory) to expand it |
+| Change a chart's time range | Use the **1m / 10m / 1h** switch above the CPU and Network charts |
+| Turn on alerts | Settings → Alerts (each one is off until you turn it on) |
 | Settings | Gear button in the footer, ⌘, or right-click the turbine |
 | Close | Click outside, press Esc, or click the turbine |
 | Quit | Power button in the footer, ⌘Q, or right-click the turbine |
@@ -131,7 +134,9 @@ The tests in `Tests/AAYRATests` cover the parts that turn raw system data into w
 - battery manufacture-date decoding, pack-assembler lookup and cell-maker parsing;
 - size, rate and time formats;
 - version comparison for the update check;
-- process naming, Wi-Fi signal quality and keyboard-shortcut choices.
+- process naming, Wi-Fi signal quality and keyboard-shortcut choices;
+- the alert rules (thresholds, how long a condition must last, re-arming and cooldowns), driven with simulated time;
+- the hour of chart history (trimming, bucket averages, gaps, and buckets that stay put as time moves).
 
 They use Swift Testing and finish in under a second.
 
@@ -161,13 +166,13 @@ GitHub Actions ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs for
 - **To release:** set the version in `Resources/Info.plist`, commit, then push a matching tag.
 
   ```bash
-  git tag -a v1.5 -m "AAYRA 1.5" && git push origin v1.5
+  git tag -a v1.6 -m "AAYRA 1.6" && git push origin v1.6
   ```
 - **Homebrew:** once CI has published the release, point the cask at it, then commit and push:
 
   ```bash
   scripts/update-cask.sh            # reads the version from Info.plist, downloads the zip, writes its SHA-256
-  git commit -m "Homebrew cask: AAYRA 1.5" Casks/aayra.rb && git push
+  git commit -m "Homebrew cask: AAYRA 1.6" Casks/aayra.rb && git push
   ```
 
 ## Privacy and notes
@@ -182,7 +187,7 @@ GitHub Actions ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs for
 
 ## Versions
 
-- **Unreleased.** Optional alerts for low battery, nearly-full disk, high memory pressure and long CPU load. CI split into build and release jobs, with a format check.
+- **1.6.** CPU and Network charts with 1m / 10m / 1h history. Optional alerts for low battery, nearly-full disk, high memory pressure and long CPU load. CI split into build and release jobs, with a format check. The CPU detail panel uses about half the CPU it did while open.
 - **1.5.** Install with Homebrew (`brew install --cask nullifye/aayra/aayra`). The panel and Settings window open without taking focus from the app you're using, and switching apps closes the panel.
 - **1.4.** Optional update check against GitHub Releases (off by default). GPU card and detail panel (off by default). External drives and other volumes in Storage, with eject. Global keyboard shortcut (⌥⌘M by default) to open the panel. Top Processes rows expand to show an app's individual processes (one at a time). Detail panels respond to the first click and scroll when taller than the screen.
 - **1.3.** Quick-action buttons in detail panels (Manage Storage, Battery and Wi-Fi settings, Activity Monitor), processes grouped under their app's real name, live disk read/write speed, VPN indicator, optional network speed in the menu bar, author and links in Settings, scrolling detail panels on small screens, and charts and background refreshes that follow the refresh-rate setting.

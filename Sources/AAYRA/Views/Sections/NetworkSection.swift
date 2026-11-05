@@ -138,6 +138,7 @@ struct NetworkCard: View {
 
 struct NetworkDetail: View {
     let monitor: SystemMonitor
+    @AppStorage(AppSettings.Key.historyRange) private var range = HistoryRange.minute
 
     var body: some View {
         let net = monitor.network
@@ -153,14 +154,27 @@ struct NetworkDetail: View {
             ]
         ) {
             DetailSection("Traffic") {
-                DualSparkline(download: monitor.downloadHistory, upload: monitor.uploadHistory, height: 34)
-                    .padding(.vertical, 2)
+                HistoryRangePicker(range: $range)
+            } content: {
+                let down = monitor.downloadSeries, up = monitor.uploadSeries, now = monitor.seriesTime
+                HistoryChart(
+                    series: [
+                        .init(
+                            name: "Download", buckets: down.buckets(range.buckets, inLast: range.seconds, now: now),
+                            color: Palette.download),
+                        .init(
+                            name: "Upload", buckets: up.buckets(range.buckets, inLast: range.seconds, now: now),
+                            color: Palette.upload),
+                    ],
+                    range: range
+                )
+                .padding(.vertical, 2)
                 DetailRow("Download", Format.rate(net.downloadBytesPerSec), dot: Palette.download)
                 DetailRow("Upload", Format.rate(net.uploadBytesPerSec), dot: Palette.upload)
                 DetailRow(
-                    "Peak (last \(Format.span(monitor.historySpan)))",
-                    "↓ \(Format.rate(monitor.downloadHistory.max() ?? 0)) · "
-                        + "↑ \(Format.rate(monitor.uploadHistory.max() ?? 0))")
+                    "Peak (\(range.spanText))",
+                    "↓ \(Format.rate(down.peak(inLast: range.seconds, now: now) ?? 0)) · "
+                        + "↑ \(Format.rate(up.peak(inLast: range.seconds, now: now) ?? 0))")
                 DetailRow("Since boot", "↓ \(Format.bytes(net.totalDownloaded)) · ↑ \(Format.bytes(net.totalUploaded))")
             }
             if let interface = net.interfaceName {

@@ -62,6 +62,17 @@ struct ShortcutTests {
     }
 }
 
+@MainActor
+struct StatusItemLabelTests {
+    @Test func cpuLabelHasConstantWidthFromOneToThreeDigits() {
+        let titles = [0, 9, 10, 99, 100].map(StatusItemController.cpuTitle)
+        #expect(titles.allSatisfy { $0.count == 5 })
+        #expect(titles[1] == " 9%  ")
+        #expect(titles[2] == " 10% ")
+        #expect(titles[4] == " 100%")
+    }
+}
+
 /// The big headline numbers split into a number and a smaller unit.
 @MainActor
 struct BigValueTests {

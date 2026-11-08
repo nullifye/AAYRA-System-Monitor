@@ -49,6 +49,7 @@ private struct BevelWordmark: View {
 }
 
 struct FooterView: View {
+    let monitor: SystemMonitor
     private let version = AppInfo.version
     private var updates = UpdateChecker.shared
 
@@ -77,6 +78,9 @@ struct FooterView: View {
                 .help("Open the AAYRA \(update.version) release page")
             }
             Spacer()
+            iconButton("Export diagnostic snapshot", symbol: "square.and.arrow.up") {
+                DiagnosticExport.show(monitor: monitor)
+            }
             iconButton("Settings", symbol: "gearshape") { SettingsWindow.show() }
                 .keyboardShortcut(",")
             iconButton("Activity Monitor", symbol: "waveform.path.ecg") { SystemActions.openActivityMonitor() }

@@ -36,6 +36,8 @@ final class StatusItemController: NSObject {
     private let monitor: SystemMonitor
     // Fixed width while spinning, so swapping frames never triggers a menu bar relayout.
     private static let iconLength: CGFloat = 26
+    // Room for the turbine and a three-digit CPU percentage, even when usage is a single digit.
+    private static let iconWithPercentLength: CGFloat = 68
     private let statusItem = NSStatusBar.system.statusItem(withLength: StatusItemController.iconLength)
     private let panel = FloatingPanel()
     private var eventMonitors: [Any] = []
@@ -69,7 +71,7 @@ final class StatusItemController: NSObject {
         if let button = statusItem.button {
             button.image = SpinnerFrames.frame(at: 0, blurred: false)
             button.imagePosition = .imageLeading
-            button.font = .monospacedDigitSystemFont(ofSize: NSFont.systemFontSize - 1, weight: .medium)
+            button.font = .monospacedSystemFont(ofSize: NSFont.systemFontSize - 1, weight: .medium)
             button.target = self
             button.action = #selector(handleClick(_:))
             button.sendAction(on: [.leftMouseUp, .rightMouseUp])
@@ -195,12 +197,17 @@ final class StatusItemController: NSObject {
         lastShowsPercent = showsPercent
         button.setAccessibilityLabel("CPU usage \(percent) percent")
         if showsPercent {
-            button.title = " \(percent)%"
-            statusItem.length = NSStatusItem.variableLength
+            statusItem.length = Self.iconWithPercentLength
+            button.title = Self.cpuTitle(percent)
         } else if !button.title.isEmpty || statusItem.length != Self.iconLength {
             button.title = ""
             statusItem.length = Self.iconLength
         }
+    }
+
+    /// Keep the number close to the turbine; reserve unused digits after the percentage.
+    static func cpuTitle(_ percent: Int) -> String {
+        " \(percent)%".padding(toLength: 5, withPad: " ", startingAt: 0)
     }
 
     @objc private func pause() { isScreenAsleep = true }

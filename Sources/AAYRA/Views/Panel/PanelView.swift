@@ -25,7 +25,7 @@ struct PanelView: View {
             if showMemory { memoryCard }
             if showBattery, let battery = monitor.battery { batteryCard(battery) }
             if showNetwork { networkCard }
-            FooterView()
+            FooterView(monitor: monitor)
         }
         // Margin around the cards leaves room for their shadows inside the transparent window.
         .padding(Metrics.floatMargin)

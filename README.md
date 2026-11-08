@@ -22,6 +22,7 @@ Native Swift and SwiftUI · Apple Silicon · macOS 15 or later · about 1.2 MB
 - 🌐 **Network.** Live ↓/↑ speed chart, Wi-Fi name, signal, noise and SNR, channel and band, standard, security, local and public IP (click to copy), router, DNS and MAC. A **VPN** badge appears while a VPN is connected.
 - 🔔 **Optional health alerts.** Get a macOS notification for an SSD SMART warning or when a previously seen VPN connection disappears while the network remains online. Alerts are off by default and rate-limited.
 - 🔔 **Optional alerts.** You can turn on macOS notifications for a low battery, the startup disk nearly full, high memory pressure, or the CPU staying above 90% for several minutes. Each alert has its own threshold and is off by default. An alert fires once and waits until things are back to normal before it can fire again. Memory and CPU alerts name the app responsible, and clicking an alert opens the panel.
+- 📋 **Diagnostic snapshot.** Export a human-readable `.txt` summary of the current readings from the panel footer for troubleshooting. The save dialog offers separate, initially unchecked choices for IP addresses, serial numbers and process names. Wi-Fi names, MAC addresses, volume names and file paths are never exported; AAYRA does not upload the report or fetch anything for the export. Review the file before sharing it.
 - ⚙️ **Settings.** Launch at Login, a keyboard shortcut to open the panel from any app, icon animation, CPU % and network speed in the menu bar, which cards to show, refresh rate (1, 2 or 5 s), temperature unit,, an optional update check (off by default), and an opt-out for the public IP lookup.
 - 🪶 **Light.** About 2–4 % CPU while idling in the menu bar, and the whole app is about 1.2 MB.
 
@@ -89,6 +90,7 @@ The animation frames, sharp (top row) and with motion blur under heavy load (bot
 | See an app's processes | Click an app in Top Processes (CPU or Memory) to expand it |
 | Change a chart's time range | Use the **1m / 10m / 1h** switch above the CPU and Network charts |
 | Turn on alerts | Settings → Alerts (each one is off until you turn it on) |
+| Export diagnostics | Share button in the panel footer; choose any sensitive details explicitly in the save dialog |
 | Settings | Gear button in the footer, ⌘, or right-click the turbine |
 | Close | Click outside, press Esc, or click the turbine |
 | Quit | Power button in the footer, ⌘Q, or right-click the turbine |

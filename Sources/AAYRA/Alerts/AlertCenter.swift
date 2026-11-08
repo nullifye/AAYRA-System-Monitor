@@ -38,6 +38,10 @@ final class AlertCenter: NSObject, UNUserNotificationCenterDelegate {
             batteryCharge: battery?.charge,
             onBattery: battery?.state == .onBattery,
             batteryDrainCause: monitor.batteryDrainInsight.cause,
+            batteryTemperatureC: battery?.temperatureC,
+            ssdSMARTWarning: monitor.ssd?.hasSMARTWarning,
+            networkConnected: monitor.network.isConnected,
+            vpnConnected: monitor.network.isVPNConnected,
             diskAvailable: monitor.disk.total > 0 ? monitor.disk.available : .max,
             memoryPressure: monitor.memory.pressure,
             cpu: monitor.cpu.total)
@@ -110,6 +114,31 @@ final class AlertCenter: NSObject, UNUserNotificationCenterDelegate {
                 )
             }
 
+        case .batteryHeat:
+            let temp = monitor.battery?.temperatureC.map { Format.temperature(celsius: $0) } ?? "high"
+            return (
+                "Battery has been warm for 2 minutes",
+                "Battery temperature is \(temp). Reduce demanding work and allow the Mac to cool."
+            )
+
+        case .ssdHealth:
+            guard let ssd = monitor.ssd else { return ("Check your SSD", "SMART reported a drive warning. Back up your data.") }
+            let detail: String
+            if ssd.hasCriticalWarning {
+                detail = "SMART reports a critical warning."
+            } else if ssd.mediaErrors > 0 {
+                detail = "SMART reports \(ssd.mediaErrors.formatted()) media errors."
+            } else {
+                detail = "SSD spare capacity is \(ssd.availableSpare)% (threshold \(ssd.availableSpareThreshold)%)."
+            }
+            return ("Check your SSD", "\(detail) Back up your data and check the drive.")
+
+        case .vpnDisconnect:
+            return (
+                "VPN appears disconnected",
+                "A VPN tunnel AAYRA saw connected is no longer present while the network is online. Check your VPN app."
+            )
+
         case .diskFull:
             let disk = monitor.disk
             return (
@@ -168,6 +197,9 @@ extension AlertSettings {
         return AlertSettings(
             batteryLow: bool(K.alertBatteryLow),
             batteryDrain: bool(K.alertBatteryDrain),
+            batteryHeat: bool(K.alertBatteryHeat),
+            ssdHealth: bool(K.alertSSDHealth),
+            vpnDisconnect: bool(K.alertVPNDisconnect),
             batteryThreshold: int(K.alertBatteryThreshold, 20),
             diskFull: bool(K.alertDiskFull),
             diskThresholdGB: int(K.alertDiskThresholdGB, 10),

@@ -2,13 +2,16 @@ import Foundation
 
 /// The alerts a user can turn on in Settings → Alerts.
 enum AlertKind: String, CaseIterable {
-    case batteryLow, batteryDrain, diskFull, memoryPressure, cpuBusy
+    case batteryLow, batteryDrain, batteryHeat, ssdHealth, vpnDisconnect, diskFull, memoryPressure, cpuBusy
 }
 
 /// Which alerts are on and their thresholds (all off by default).
 struct AlertSettings: Equatable {
     var batteryLow = false
     var batteryDrain = false
+    var batteryHeat = false
+    var ssdHealth = false
+    var vpnDisconnect = false
     var batteryThreshold = 20  // percent
     var diskFull = false
     var diskThresholdGB = 10  // GB available on the startup disk
@@ -21,6 +24,9 @@ struct AlertSettings: Equatable {
         switch kind {
         case .batteryLow: batteryLow
         case .batteryDrain: batteryDrain
+        case .batteryHeat: batteryHeat
+        case .ssdHealth: ssdHealth
+        case .vpnDisconnect: vpnDisconnect
         case .diskFull: diskFull
         case .memoryPressure: memoryPressure
         case .cpuBusy: cpuBusy
@@ -33,6 +39,10 @@ struct AlertSnapshot: Equatable {
     var batteryCharge: Double?  // 0…1, nil on Macs without a battery
     var onBattery = false
     var batteryDrainCause: BatteryDrainInsight.Cause?
+    var batteryTemperatureC: Double?
+    var ssdSMARTWarning: Bool?
+    var networkConnected = false
+    var vpnConnected = false
     var diskAvailable: Int64 = .max  // bytes free (including purgeable) on the startup disk
     var memoryPressure: MemoryStats.Pressure = .normal
     var cpu: Double = 0  // 0…1
@@ -42,7 +52,7 @@ struct AlertSnapshot: Equatable {
 ///
 /// Every alert fires once when its condition is met, then re-arms only after things are clearly back
 /// to normal (hysteresis), so a value hovering around the threshold doesn't produce a stream of alerts.
-/// Memory and CPU must also stay in that state for a while, and repeat at most every 30 minutes.
+/// Sustained alerts wait before firing and repeat at most every 30 minutes after recovery.
 struct AlertRules {
     static let cpuBusyLevel = 0.90  // "pegged" starts here…
     static let cpuCalmLevel = 0.75  // …and only ends once usage drops below this
@@ -51,11 +61,16 @@ struct AlertRules {
     static let repeatAfter: TimeInterval = 30 * 60
     static let batteryRearmMargin = 5.0  // percentage points above the threshold
     static let diskRearmFactor = 1.25  // 25 % more space than the threshold
+    static let batteryHeatThresholdC = 40.0
+    static let batteryHeatCalmC = 38.0
+    static let batteryHeatSustain: TimeInterval = 120
+    static let vpnDisconnectSustain: TimeInterval = 15
 
     private var armed = Set(AlertKind.allCases)
     private var conditionSince: [AlertKind: TimeInterval] = [:]
     private var calmSince: [AlertKind: TimeInterval] = [:]
     private var lastFired: [AlertKind: TimeInterval] = [:]
+    private var vpnWasConnected = false
 
     /// Returns the alerts that should be shown now. `now` is any monotonic time in seconds.
     mutating func evaluate(_ s: AlertSnapshot, settings: AlertSettings, now: TimeInterval) -> [AlertKind] {
@@ -85,6 +100,29 @@ struct AlertRules {
             // minute and limit repeats to once per 30 minutes if the problem returns.
             let active = s.batteryDrainCause != nil
             return sustained(kind, active: active, calm: !active, after: 0, now: now)
+
+        case .batteryHeat:
+            guard let temp = s.batteryTemperatureC, temp.isFinite else {
+                conditionSince[kind] = nil  // missing data cannot count toward two minutes
+                calmSince[kind] = nil
+                return false
+            }
+            let hot = temp >= Self.batteryHeatThresholdC
+            return sustained(
+                kind, active: hot, calm: temp <= Self.batteryHeatCalmC,
+                after: Self.batteryHeatSustain, now: now)
+
+        case .ssdHealth:
+            guard let warning = s.ssdSMARTWarning else { return false }  // SMART unavailable isn't "healthy"
+            return sustained(kind, active: warning, calm: !warning, after: 0, now: now)
+
+        case .vpnDisconnect:
+            // A VPN that was never seen connected (including on launch) is not a disconnect.
+            if s.vpnConnected { vpnWasConnected = true }
+            let disconnected = vpnWasConnected && s.networkConnected && !s.vpnConnected
+            return sustained(
+                kind, active: disconnected, calm: s.vpnConnected,
+                after: Self.vpnDisconnectSustain, now: now)
 
         case .diskFull:
             let threshold = Double(settings.diskThresholdGB) * 1_000_000_000
@@ -137,6 +175,7 @@ struct AlertRules {
     }
 
     private mutating func reset(_ kind: AlertKind) {
+        if kind == .vpnDisconnect { vpnWasConnected = false }
         armed.insert(kind)
         conditionSince[kind] = nil
         calmSince[kind] = nil

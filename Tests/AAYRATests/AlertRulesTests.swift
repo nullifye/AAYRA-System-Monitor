@@ -59,6 +59,95 @@ struct AlertRulesTests {
         #expect(fire(draining, AlertSettings(batteryDrain: true), at: 1) == [.batteryDrain])
     }
 
+    @Test mutating func batteryHeatNeedsTwoMinutesAndCoolsBeforeRearming() {
+        let on = AlertSettings(batteryHeat: true)
+        #expect(fire(AlertSnapshot(batteryTemperatureC: 40), on, at: 0).isEmpty)
+        #expect(fire(AlertSnapshot(batteryTemperatureC: 40), on, at: 119).isEmpty)
+        #expect(fire(AlertSnapshot(batteryTemperatureC: 40), on, at: 120) == [.batteryHeat])
+        #expect(fire(AlertSnapshot(batteryTemperatureC: 41), on, at: 130).isEmpty)
+        _ = fire(AlertSnapshot(batteryTemperatureC: 37), on, at: 140)
+        _ = fire(AlertSnapshot(batteryTemperatureC: 37), on, at: 201)
+        #expect(fire(AlertSnapshot(batteryTemperatureC: 40), on, at: 210).isEmpty)
+        #expect(fire(AlertSnapshot(batteryTemperatureC: 40), on, at: 330).isEmpty)  // 30-minute cooldown
+        #expect(fire(AlertSnapshot(batteryTemperatureC: 40), on, at: 1_921) == [.batteryHeat])
+    }
+
+    @Test mutating func batteryHeatMustRemainAboveThresholdForTwoMinutes() {
+        let on = AlertSettings(batteryHeat: true)
+        _ = fire(AlertSnapshot(batteryTemperatureC: 40), on, at: 0)
+        _ = fire(AlertSnapshot(batteryTemperatureC: 39), on, at: 110)
+        #expect(fire(AlertSnapshot(batteryTemperatureC: 40), on, at: 120).isEmpty)
+        #expect(fire(AlertSnapshot(batteryTemperatureC: 40), on, at: 240) == [.batteryHeat])
+    }
+
+    @Test mutating func missingHeatReadingDoesNotCountAsSustained() {
+        let on = AlertSettings(batteryHeat: true)
+        _ = fire(AlertSnapshot(batteryTemperatureC: 41), on, at: 0)
+        _ = fire(AlertSnapshot(), on, at: 80)
+        #expect(fire(AlertSnapshot(batteryTemperatureC: 41), on, at: 120).isEmpty)
+        #expect(fire(AlertSnapshot(batteryTemperatureC: 41), on, at: 240) == [.batteryHeat])
+    }
+
+    @Test mutating func ssdWarningFiresOnceAndNeedsConfirmedRecovery() {
+        let on = AlertSettings(ssdHealth: true)
+        #expect(fire(AlertSnapshot(ssdSMARTWarning: true), on, at: 0) == [.ssdHealth])
+        #expect(fire(AlertSnapshot(ssdSMARTWarning: true), on, at: 60).isEmpty)
+        _ = fire(AlertSnapshot(ssdSMARTWarning: nil), on, at: 90)
+        #expect(fire(AlertSnapshot(ssdSMARTWarning: true), on, at: 120).isEmpty)
+        _ = fire(AlertSnapshot(ssdSMARTWarning: false), on, at: 180)
+        _ = fire(AlertSnapshot(ssdSMARTWarning: false), on, at: 241)
+        #expect(fire(AlertSnapshot(ssdSMARTWarning: true), on, at: 250).isEmpty)
+        #expect(fire(AlertSnapshot(ssdSMARTWarning: true), on, at: 1_801) == [.ssdHealth])
+    }
+
+    @Test mutating func vpnDropOnlyAfterPreviouslyObservedConnection() {
+        let on = AlertSettings(vpnDisconnect: true)
+        let online = AlertSnapshot(networkConnected: true)
+        let vpn = AlertSnapshot(networkConnected: true, vpnConnected: true)
+        #expect(fire(online, on, at: 0).isEmpty)  // startup without VPN is not a disconnect
+        #expect(fire(online, on, at: 120).isEmpty)
+        _ = fire(vpn, on, at: 130)
+        #expect(fire(online, on, at: 131).isEmpty)
+        _ = fire(vpn, on, at: 140)  // quick reconnect cancels the pending alert
+        _ = fire(online, on, at: 150)
+        #expect(fire(online, on, at: 164).isEmpty)
+        #expect(fire(online, on, at: 165) == [.vpnDisconnect])
+        #expect(fire(online, on, at: 200).isEmpty)
+    }
+
+    @Test mutating func vpnOfflineDoesNotCountAsOnlineExposure() {
+        let on = AlertSettings(vpnDisconnect: true)
+        let vpn = AlertSnapshot(networkConnected: true, vpnConnected: true)
+        let offline = AlertSnapshot()
+        let online = AlertSnapshot(networkConnected: true)
+        _ = fire(vpn, on, at: 0)
+        #expect(fire(offline, on, at: 5).isEmpty)
+        #expect(fire(offline, on, at: 30).isEmpty)
+        #expect(fire(online, on, at: 31).isEmpty)
+        #expect(fire(online, on, at: 46) == [.vpnDisconnect])
+    }
+
+    @Test mutating func vpnRearmsOnlyAfterReconnectionAndCooldown() {
+        let on = AlertSettings(vpnDisconnect: true)
+        let vpn = AlertSnapshot(networkConnected: true, vpnConnected: true)
+        let online = AlertSnapshot(networkConnected: true)
+        _ = fire(vpn, on, at: 0)
+        _ = fire(online, on, at: 1)
+        #expect(fire(online, on, at: 16) == [.vpnDisconnect])
+        _ = fire(vpn, on, at: 100)
+        _ = fire(vpn, on, at: 161)
+        _ = fire(online, on, at: 162)
+        #expect(fire(online, on, at: 177).isEmpty)
+        #expect(fire(online, on, at: 1_817) == [.vpnDisconnect])
+    }
+
+    @Test mutating func togglingVPNAlertOffForgetsPreviousTunnel() {
+        let on = AlertSettings(vpnDisconnect: true)
+        _ = fire(AlertSnapshot(networkConnected: true, vpnConnected: true), on, at: 0)
+        _ = fire(AlertSnapshot(networkConnected: true), AlertSettings(), at: 1)
+        #expect(fire(AlertSnapshot(networkConnected: true), on, at: 50).isEmpty)
+    }
+
     // MARK: Disk
 
     @Test mutating func diskFiresBelowThresholdAndRearmsWithMargin() {
@@ -130,7 +219,9 @@ struct AlertRulesTests {
 
     @Test mutating func everythingOffByDefault() {
         let off = AlertSettings()
-        let bad = AlertSnapshot(batteryCharge: 0.01, onBattery: true, diskAvailable: 1, memoryPressure: .critical, cpu: 1)
+        let bad = AlertSnapshot(
+            batteryCharge: 0.01, onBattery: true, batteryTemperatureC: 45, ssdSMARTWarning: true,
+            networkConnected: true, diskAvailable: 1, memoryPressure: .critical, cpu: 1)
         for t in stride(from: 0.0, through: 3_600, by: 60) {
             #expect(fire(bad, off, at: t).isEmpty)
         }

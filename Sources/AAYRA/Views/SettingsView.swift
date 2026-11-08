@@ -40,6 +40,9 @@ struct SettingsView: View {
     @AppStorage(AppSettings.Key.checkForUpdates) private var checkForUpdates = false
     @AppStorage(AppSettings.Key.alertBatteryLow) private var alertBattery = false
     @AppStorage(AppSettings.Key.alertBatteryDrain) private var alertBatteryDrain = false
+    @AppStorage(AppSettings.Key.alertBatteryHeat) private var alertBatteryHeat = false
+    @AppStorage(AppSettings.Key.alertSSDHealth) private var alertSSD = false
+    @AppStorage(AppSettings.Key.alertVPNDisconnect) private var alertVPN = false
     @AppStorage(AppSettings.Key.alertBatteryThreshold) private var alertBatteryThreshold = 20
     @AppStorage(AppSettings.Key.alertDiskFull) private var alertDisk = false
     @AppStorage(AppSettings.Key.alertDiskThresholdGB) private var alertDiskThreshold = 10
@@ -206,58 +209,87 @@ struct SettingsView: View {
         }
         .formStyle(.grouped)
         .frame(width: 460, height: 700)
+        .onChange(of: alertEnabledFlags) { old, new in
+            if zip(old, new).contains(where: { !$0 && $1 }) { alerts.requestAuthorization() }
+        }
     }
 
-    /// Alerts: each one off by default; turning one on reveals its threshold.
+    private var alertEnabledFlags: [Bool] {
+        [alertBattery, alertBatteryDrain, alertBatteryHeat, alertDisk, alertSSD, alertMemory, alertCPU, alertVPN]
+    }
+
+    /// Keep related alerts together; all are off by default.
     private var alertsSection: some View {
-        Section {
+        Group {
             if hasBattery {
-                Toggle("Low battery", isOn: $alertBattery)
-                if alertBattery {
-                    Picker("Alert at", selection: $alertBatteryThreshold) {
-                        ForEach([10, 15, 20, 30], id: \.self) { Text("\($0)%").tag($0) }
+                Section {
+                    Toggle("Low battery", isOn: $alertBattery)
+                    if alertBattery {
+                        Picker("Alert at", selection: $alertBatteryThreshold) {
+                            ForEach([10, 15, 20, 30], id: \.self) { Text("\($0)%").tag($0) }
+                        }
+                    }
+                    Toggle("Battery draining on AC", isOn: $alertBatteryDrain)
+                    Toggle("Battery temperature ≥ 40°C for 2 minutes", isOn: $alertBatteryHeat)
+                } header: {
+                    Text("Battery Alerts")
+                } footer: {
+                    Text("Heat must stay at 40°C or higher for two minutes. It re-arms after cooling below 38°C.")
+                        .foregroundStyle(.secondary)
+                }
+            }
+            Section {
+                Toggle("Startup disk almost full", isOn: $alertDisk)
+                if alertDisk {
+                    Picker("Alert below", selection: $alertDiskThreshold) {
+                        ForEach([5, 10, 20, 50], id: \.self) { Text("\($0) GB free").tag($0) }
                     }
                 }
-                Toggle("Battery draining on AC", isOn: $alertBatteryDrain)
+                Toggle("SSD SMART warning", isOn: $alertSSD)
+            } header: {
+                Text("Storage Alerts")
+            } footer: {
+                Text("SMART alerts require an internal SSD whose health data is available to AAYRA.")
+                    .foregroundStyle(.secondary)
             }
-            Toggle("Startup disk almost full", isOn: $alertDisk)
-            if alertDisk {
-                Picker("Alert below", selection: $alertDiskThreshold) {
-                    ForEach([5, 10, 20, 50], id: \.self) { Text("\($0) GB free").tag($0) }
+            Section {
+                Toggle("High memory pressure", isOn: $alertMemory)
+                if alertMemory {
+                    Picker("Alert when pressure is", selection: $alertMemoryCriticalOnly) {
+                        Text("High").tag(false)
+                        Text("Critical").tag(true)
+                    }
+                }
+                Toggle("CPU busy for a long time", isOn: $alertCPU)
+                if alertCPU {
+                    Picker("Alert after", selection: $alertCPUMinutes) {
+                        ForEach([2, 5, 10, 15], id: \.self) { Text("\($0) minutes above 90%").tag($0) }
+                    }
+                }
+            } header: {
+                Text("Performance Alerts")
+            }
+            Section {
+                Toggle("VPN disconnect", isOn: $alertVPN)
+            } header: {
+                Text("Network Alerts")
+            } footer: {
+                Text(
+                    "AAYRA must first see a VPN connected. It cannot tell an intentional disconnect from a drop. "
+                        + "Alerts use macOS notifications and repeat at most every 30 minutes after recovery."
+                )
+                .foregroundStyle(.secondary)
+            }
+            if alerts.authorization == .denied, alertEnabledFlags.contains(true) {
+                Section("Notification Access") {
+                    HStack {
+                        Label("Notifications are off for AAYRA", systemImage: "bell.slash.fill")
+                            .foregroundStyle(.orange)
+                        Spacer()
+                        Button("Open Settings…") { SystemActions.openNotificationSettings() }
+                    }
                 }
             }
-            Toggle("High memory pressure", isOn: $alertMemory)
-            if alertMemory {
-                Picker("Alert when pressure is", selection: $alertMemoryCriticalOnly) {
-                    Text("High").tag(false)
-                    Text("Critical").tag(true)
-                }
-            }
-            Toggle("CPU busy for a long time", isOn: $alertCPU)
-            if alertCPU {
-                Picker("Alert after", selection: $alertCPUMinutes) {
-                    ForEach([2, 5, 10, 15], id: \.self) { Text("\($0) minutes above 90%").tag($0) }
-                }
-            }
-            if alerts.authorization == .denied, alertBattery || alertBatteryDrain || alertDisk || alertMemory || alertCPU {
-                HStack {
-                    Label("Notifications are off for AAYRA", systemImage: "bell.slash.fill")
-                        .foregroundStyle(.orange)
-                    Spacer()
-                    Button("Open Settings…") { SystemActions.openNotificationSettings() }
-                }
-            }
-        } header: {
-            Text("Alerts")
-        } footer: {
-            Text(
-                "Shown as macOS notifications. Each alert appears once, then waits until things are back to normal; "
-                    + "memory, CPU and AC drain alerts repeat at most every 30 minutes."
-            )
-            .foregroundStyle(.secondary)
-        }
-        .onChange(of: [alertBattery, alertBatteryDrain, alertDisk, alertMemory, alertCPU]) { _, on in
-            if on.contains(true) { alerts.requestAuthorization() }
         }
     }
 

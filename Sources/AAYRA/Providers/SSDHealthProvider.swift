@@ -28,9 +28,14 @@ struct SSDHealth: Equatable {
     var info: SSDInfo
     var hasCriticalWarning: Bool
 
+    /// SMART indicators that warrant checking the drive; wear alone is not a failure warning.
+    var hasSMARTWarning: Bool {
+        hasCriticalWarning || mediaErrors > 0 || (availableSpareThreshold > 0 && availableSpare <= availableSpareThreshold)
+    }
+
     /// Plain-language summary in the spirit of Disk Utility's "Verified / Failing".
     var condition: String {
-        if hasCriticalWarning || mediaErrors > 0 { return "Check Drive" }
+        if hasSMARTWarning { return "Check Drive" }
         return health >= 0.5 ? "Good" : "Worn"
     }
 }

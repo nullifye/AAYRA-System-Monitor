@@ -53,6 +53,10 @@ struct FooterView: View {
     private let version = AppInfo.version
     private var updates = UpdateChecker.shared
 
+    init(monitor: SystemMonitor) {
+        self.monitor = monitor
+    }
+
     var body: some View {
         HStack(spacing: 6) {
             HStack(alignment: .firstTextBaseline, spacing: 5) {

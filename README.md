@@ -169,13 +169,13 @@ GitHub Actions ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs for
 - **To release:** set the version in `Resources/Info.plist`, commit, then push a matching tag.
 
   ```bash
-  git tag -a v1.6 -m "AAYRA 1.6" && git push origin v1.6
+  git tag -a v1.7 -m "AAYRA 1.7" && git push origin v1.7
   ```
 - **Homebrew:** once CI has published the release, point the cask at it, then commit and push:
 
   ```bash
   scripts/update-cask.sh            # reads the version from Info.plist, downloads the zip, writes its SHA-256
-  git commit -m "Homebrew cask: AAYRA 1.6" Casks/aayra.rb && git push
+  git commit -m "Homebrew cask: AAYRA 1.7" Casks/aayra.rb && git push
   ```
 
 ## Privacy and notes
@@ -190,6 +190,7 @@ GitHub Actions ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs for
 
 ## Versions
 
+- **1.7.** Optional SSD SMART, sustained battery heat and VPN-disconnect alerts. Privacy-scrubbed diagnostic snapshot export with explicit opt-ins for IP addresses, serial numbers and process names. GPU detail charts now offer 1m / 10m / 1h history, average and peak, plus memory share and system thermal state. Menu-bar CPU text stays steady as the percentage changes.
 - **1.6.** CPU and Network charts with 1m / 10m / 1h history. Optional alerts for low battery, nearly-full disk, high memory pressure and long CPU load. CI split into build and release jobs, with a format check. The CPU detail panel uses about half the CPU it did while open.
 - **1.5.** Install with Homebrew (`brew install --cask nullifye/aayra/aayra`). The panel and Settings window open without taking focus from the app you're using, and switching apps closes the panel.
 - **1.4.** Optional update check against GitHub Releases (off by default). GPU card and detail panel (off by default). External drives and other volumes in Storage, with eject. Global keyboard shortcut (⌥⌘M by default) to open the panel. Top Processes rows expand to show an app's individual processes (one at a time). Detail panels respond to the first click and scroll when taller than the screen.

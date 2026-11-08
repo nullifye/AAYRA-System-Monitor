@@ -65,6 +65,19 @@ struct TimeSeriesTests {
         #expect(HistoryRange.hour.seconds / Double(HistoryRange.hour.buckets) == 30)
     }
 
+    @Test func gpuHistoryUsesRealSamplesAcrossRangesWithoutInventingIdleReadings() {
+        var gpu = TimeSeries()
+        gpu.append(0.2, at: 0)
+        gpu.append(0.8, at: 3_590)  // GPU sampling was disabled in between
+        #expect(gpu.peak(inLast: HistoryRange.hour.seconds, now: 3_599) == 0.8)
+        #expect(gpu.average(inLast: HistoryRange.hour.seconds, now: 3_599) == 0.5)
+        #expect(gpu.average(inLast: HistoryRange.minute.seconds, now: 3_599) == 0.8)
+        let buckets = gpu.buckets(HistoryRange.hour.buckets, inLast: HistoryRange.hour.seconds, now: 3_599)
+        #expect(buckets.first == 0.2)
+        #expect(buckets.last == 0.8)
+        #expect(buckets.dropFirst().dropLast().allSatisfy { $0 == nil })
+    }
+
     @Test func shortHolesJoinLongGapsBreak() {
         // Two empty slots (a late reading) stay one line; a long stretch (sleep) starts a new segment.
         let buckets: [Double?] = [1, 2, nil, nil, 3, 4] + Array(repeating: nil, count: 10) + [5, 6]

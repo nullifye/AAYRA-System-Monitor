@@ -36,6 +36,8 @@ final class SystemMonitor {
     private(set) var seriesTime: TimeInterval = ProcessInfo.processInfo.systemUptime
     private(set) var gpu: GPUStats?
     private(set) var gpuHistory: [Double] = Array(repeating: 0, count: historyLength)
+    /// GPU readings are recorded only while the GPU card is enabled; missing readings remain gaps.
+    private(set) var gpuSeries = TimeSeries()
     private(set) var diskIO = DiskIO()
     /// Mounted volumes other than the startup disk (external drives, disk images, network shares).
     private(set) var volumes: [VolumeStats] = []
@@ -141,6 +143,7 @@ final class SystemMonitor {
         if AppSettings.showsGPU, let g = GPUProvider.sample() {
             gpu = g
             push(&gpuHistory, g.device)
+            gpuSeries.append(g.device, at: now)
         }
         if isPanelOpen && Self.isDue(lastDetailsRefresh, every: 3, now: now) {
             sampleProcesses()

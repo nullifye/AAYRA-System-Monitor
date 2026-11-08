@@ -39,6 +39,7 @@ struct SettingsView: View {
     @AppStorage(AppSettings.Key.showNetworkInMenuBar) private var showNetworkSpeed = false
     @AppStorage(AppSettings.Key.checkForUpdates) private var checkForUpdates = false
     @AppStorage(AppSettings.Key.alertBatteryLow) private var alertBattery = false
+    @AppStorage(AppSettings.Key.alertBatteryDrain) private var alertBatteryDrain = false
     @AppStorage(AppSettings.Key.alertBatteryThreshold) private var alertBatteryThreshold = 20
     @AppStorage(AppSettings.Key.alertDiskFull) private var alertDisk = false
     @AppStorage(AppSettings.Key.alertDiskThresholdGB) private var alertDiskThreshold = 10
@@ -217,6 +218,7 @@ struct SettingsView: View {
                         ForEach([10, 15, 20, 30], id: \.self) { Text("\($0)%").tag($0) }
                     }
                 }
+                Toggle("Battery draining on AC", isOn: $alertBatteryDrain)
             }
             Toggle("Startup disk almost full", isOn: $alertDisk)
             if alertDisk {
@@ -237,7 +239,7 @@ struct SettingsView: View {
                     ForEach([2, 5, 10, 15], id: \.self) { Text("\($0) minutes above 90%").tag($0) }
                 }
             }
-            if alerts.authorization == .denied, alertBattery || alertDisk || alertMemory || alertCPU {
+            if alerts.authorization == .denied, alertBattery || alertBatteryDrain || alertDisk || alertMemory || alertCPU {
                 HStack {
                     Label("Notifications are off for AAYRA", systemImage: "bell.slash.fill")
                         .foregroundStyle(.orange)
@@ -250,11 +252,11 @@ struct SettingsView: View {
         } footer: {
             Text(
                 "Shown as macOS notifications. Each alert appears once, then waits until things are back to normal; "
-                    + "memory and CPU alerts repeat at most every 30 minutes."
+                    + "memory, CPU and AC drain alerts repeat at most every 30 minutes."
             )
             .foregroundStyle(.secondary)
         }
-        .onChange(of: [alertBattery, alertDisk, alertMemory, alertCPU]) { _, on in
+        .onChange(of: [alertBattery, alertBatteryDrain, alertDisk, alertMemory, alertCPU]) { _, on in
             if on.contains(true) { alerts.requestAuthorization() }
         }
     }

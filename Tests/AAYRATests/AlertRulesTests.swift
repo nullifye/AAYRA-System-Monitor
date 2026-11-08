@@ -40,6 +40,25 @@ struct AlertRulesTests {
         #expect(fire(AlertSnapshot(batteryCharge: nil), on, at: 0).isEmpty)
     }
 
+    @Test mutating func acDrainFiresOncePerEventAndRearmsAfterRecovery() {
+        let on = AlertSettings(batteryDrain: true)
+        let draining = AlertSnapshot(batteryDrainCause: .adapterMayBeUnderpowered)
+        #expect(fire(draining, on, at: 0) == [.batteryDrain])
+        #expect(fire(AlertSnapshot(batteryDrainCause: .unknown), on, at: 10).isEmpty)
+        _ = fire(AlertSnapshot(), on, at: 20)
+        #expect(fire(draining, on, at: 50).isEmpty)  // not calm long enough
+        _ = fire(AlertSnapshot(), on, at: 60)
+        _ = fire(AlertSnapshot(), on, at: 121)  // re-armed, but still cooling down
+        #expect(fire(draining, on, at: 130).isEmpty)
+        #expect(fire(draining, on, at: 1_801) == [.batteryDrain])
+    }
+
+    @Test mutating func acDrainNotificationIsOptIn() {
+        let draining = AlertSnapshot(batteryDrainCause: .unknown)
+        #expect(fire(draining, AlertSettings(), at: 0).isEmpty)
+        #expect(fire(draining, AlertSettings(batteryDrain: true), at: 1) == [.batteryDrain])
+    }
+
     // MARK: Disk
 
     @Test mutating func diskFiresBelowThresholdAndRearmsWithMargin() {

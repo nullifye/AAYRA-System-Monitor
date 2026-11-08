@@ -4,6 +4,7 @@ import SwiftUI
 
 struct BatteryCard: View {
     let battery: BatteryStats
+    var drainCause: BatteryDrainInsight.Cause?
 
     var body: some View {
         let tint = battery.tint, maxCapacity = battery.maxCapacity
@@ -33,13 +34,15 @@ struct BatteryCard: View {
     /// The card adds the adapter wattage when plugged in, e.g. "Charging · 1h 10m · 96W adapter".
     private var stateText: String {
         let adapter = battery.adapterWatts.map { " · \($0)W adapter" } ?? ""
-        return battery.stateText + (battery.isPluggedIn ? adapter : "")
+        let state = drainCause == nil ? battery.stateText : "Battery draining on AC"
+        return state + (battery.isPluggedIn ? adapter : "")
     }
 }
 
 struct BatteryDetail: View {
     let battery: BatteryStats
     let lowPowerMode: Bool
+    var drainCause: BatteryDrainInsight.Cause?
 
     var body: some View {
         DetailPanel(
@@ -60,7 +63,7 @@ struct BatteryDetail: View {
     }
 
     private var subtitle: String {
-        "\(Format.percent(battery.charge)) · \(battery.stateText)"
+        "\(Format.percent(battery.charge)) · \(drainCause == nil ? battery.stateText : "Battery draining on AC")"
     }
 
     private var chargeSection: some View {
@@ -113,6 +116,13 @@ struct BatteryDetail: View {
     private var powerSection: some View {
         DetailSection("Power") {
             DetailRow("Battery", batteryFlow)
+            if let drainCause {
+                DetailRow("On AC", drainCause.title, dot: .orange)
+                Text(drainCause.explanation)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             if let load = battery.systemLoadWatts { DetailRow("Mac drawing", String(format: "%.1f W", load)) }
             if let mV = battery.voltage_mV { DetailRow("Voltage", Format.volts(mV)) }
             if let mA = battery.current_mA { DetailRow("Current", "\(mA) mA") }

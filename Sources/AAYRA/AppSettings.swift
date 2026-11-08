@@ -16,6 +16,7 @@ enum AppSettings {
         static let fetchPublicIP = "fetchPublicIP"
         static let temperatureUnit = "temperatureUnit"
         static let alertBatteryLow = "alertBatteryLow"
+        static let alertBatteryDrain = "alertBatteryDrain"
         static let alertBatteryThreshold = "alertBatteryThreshold"
         static let alertDiskFull = "alertDiskFull"
         static let alertDiskThresholdGB = "alertDiskThresholdGB"

@@ -2,12 +2,13 @@ import Foundation
 
 /// The alerts a user can turn on in Settings → Alerts.
 enum AlertKind: String, CaseIterable {
-    case batteryLow, diskFull, memoryPressure, cpuBusy
+    case batteryLow, batteryDrain, diskFull, memoryPressure, cpuBusy
 }
 
 /// Which alerts are on and their thresholds (all off by default).
 struct AlertSettings: Equatable {
     var batteryLow = false
+    var batteryDrain = false
     var batteryThreshold = 20  // percent
     var diskFull = false
     var diskThresholdGB = 10  // GB available on the startup disk
@@ -19,6 +20,7 @@ struct AlertSettings: Equatable {
     func isOn(_ kind: AlertKind) -> Bool {
         switch kind {
         case .batteryLow: batteryLow
+        case .batteryDrain: batteryDrain
         case .diskFull: diskFull
         case .memoryPressure: memoryPressure
         case .cpuBusy: cpuBusy
@@ -30,6 +32,7 @@ struct AlertSettings: Equatable {
 struct AlertSnapshot: Equatable {
     var batteryCharge: Double?  // 0…1, nil on Macs without a battery
     var onBattery = false
+    var batteryDrainCause: BatteryDrainInsight.Cause?
     var diskAvailable: Int64 = .max  // bytes free (including purgeable) on the startup disk
     var memoryPressure: MemoryStats.Pressure = .normal
     var cpu: Double = 0  // 0…1
@@ -76,6 +79,12 @@ struct AlertRules {
             let percent = charge * 100, threshold = Double(settings.batteryThreshold)
             if !s.onBattery || percent > threshold + Self.batteryRearmMargin { armed.insert(kind) }
             return fireIfArmed(kind, when: s.onBattery && percent <= threshold, now: now)
+
+        case .batteryDrain:
+            // The insight already requires a minute of readings. Re-arm only after a calm
+            // minute and limit repeats to once per 30 minutes if the problem returns.
+            let active = s.batteryDrainCause != nil
+            return sustained(kind, active: active, calm: !active, after: 0, now: now)
 
         case .diskFull:
             let threshold = Double(settings.diskThresholdGB) * 1_000_000_000

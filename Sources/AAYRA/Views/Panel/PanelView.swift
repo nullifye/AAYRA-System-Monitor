@@ -63,11 +63,13 @@ struct PanelView: View {
     }
 
     private func batteryCard(_ battery: BatteryStats) -> some View {
-        BatteryCard(battery: battery)
+        BatteryCard(battery: battery, drainCause: monitor.batteryDrainInsight.cause)
             .detailPopover(.battery, selection: $openDetail, edge: detailEdge, tint: battery.tint) {
                 // Read through the monitor so the open panel keeps updating.
                 if let battery = monitor.battery {
-                    BatteryDetail(battery: battery, lowPowerMode: monitor.isLowPowerMode)
+                    BatteryDetail(
+                        battery: battery, lowPowerMode: monitor.isLowPowerMode,
+                        drainCause: monitor.batteryDrainInsight.cause)
                 }
             }
     }

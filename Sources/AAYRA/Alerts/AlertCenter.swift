@@ -37,6 +37,7 @@ final class AlertCenter: NSObject, UNUserNotificationCenterDelegate {
         let snapshot = AlertSnapshot(
             batteryCharge: battery?.charge,
             onBattery: battery?.state == .onBattery,
+            batteryDrainCause: monitor.batteryDrainInsight.cause,
             diskAvailable: monitor.disk.total > 0 ? monitor.disk.available : .max,
             memoryPressure: monitor.memory.pressure,
             cpu: monitor.cpu.total)
@@ -92,6 +93,23 @@ final class AlertCenter: NSObject, UNUserNotificationCenterDelegate {
             let left = battery?.minutesToEmpty.map { "About \(Format.minutes($0)) left. " } ?? ""
             return ("Battery low: \(percent)", left + "Connect a charger soon.")
 
+        case .batteryDrain:
+            let cause = monitor.batteryDrainInsight.cause
+            let watts = monitor.battery?.powerWatts.map { String(format: "%.1f W", abs($0)) } ?? ""
+            let rate = watts.isEmpty ? "" : " (\(watts))"
+            switch cause {
+            case .adapterMayBeUnderpowered:
+                return (
+                    "Battery draining while plugged in",
+                    "Battery supplying power\(rate). The adapter may be underpowered for the current workload."
+                )
+            case .unknown, nil:
+                return (
+                    "Battery draining while plugged in",
+                    "Battery supplying power\(rate). This can be temporary; check the adapter and workload if it continues."
+                )
+            }
+
         case .diskFull:
             let disk = monitor.disk
             return (
@@ -129,7 +147,7 @@ final class AlertCenter: NSObject, UNUserNotificationCenterDelegate {
     nonisolated func userNotificationCenter(
         _ center: UNUserNotificationCenter, willPresent notification: UNNotification
     ) async -> UNNotificationPresentationOptions {
-        [.banner, .sound]
+        [.banner, .list, .sound]
     }
 
     /// Clicking an alert opens the panel.
@@ -149,6 +167,7 @@ extension AlertSettings {
         typealias K = AppSettings.Key
         return AlertSettings(
             batteryLow: bool(K.alertBatteryLow),
+            batteryDrain: bool(K.alertBatteryDrain),
             batteryThreshold: int(K.alertBatteryThreshold, 20),
             diskFull: bool(K.alertDiskFull),
             diskThresholdGB: int(K.alertDiskThresholdGB, 10),

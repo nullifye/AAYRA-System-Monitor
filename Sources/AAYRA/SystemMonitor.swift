@@ -24,6 +24,7 @@ final class SystemMonitor {
     private(set) var disk = DiskStats()
     private(set) var ssd: SSDHealth?
     private(set) var battery: BatteryStats?
+    private(set) var batteryDrainInsight = BatteryDrainInsight()
     private(set) var network = NetworkStats()
     private(set) var downloadHistory: [Double] = Array(repeating: 0, count: historyLength)
     private(set) var uploadHistory: [Double] = Array(repeating: 0, count: historyLength)
@@ -186,6 +187,7 @@ final class SystemMonitor {
             if let condition = reportedHealth?.condition { b.condition = condition }
             return b
         }
+        batteryDrainInsight.update(battery, at: Self.now)
         bootDate = MachineInfo.bootDate
         isLowPowerMode = ProcessInfo.processInfo.isLowPowerModeEnabled
         refreshWiFiName()

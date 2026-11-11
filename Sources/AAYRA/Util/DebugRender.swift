@@ -57,6 +57,10 @@
                 .padding(28)
                 .background(wallpaper)
                 render(hero, scheme: scheme, to: name("hero", scheme))
+
+                for (base, view) in AgentUsageSnapshot.views() {
+                    render(view.background(wallpaper), scheme: scheme, to: name(base, scheme))
+                }
             }
 
             // Menu bar network speed item, drawn black on a light bar and white on a dark bar (as macOS tints templates).

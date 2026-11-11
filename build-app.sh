@@ -14,6 +14,9 @@ cp "$BIN" "$APP/Contents/MacOS/AAYRA"
 strip -x "$APP/Contents/MacOS/AAYRA"     # drop debug symbols (roughly halves the binary)
 cp Resources/Info.plist "$APP/Contents/Info.plist"
 cp Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
+cp Resources/AgentIcons/*.png "$APP/Contents/Resources/"
+cp Resources/AgentIcons/LICENSE "$APP/Contents/Resources/AgentIcons-LICENSE"
+cp Resources/AgentIcons/NOTICE.md "$APP/Contents/Resources/AgentIcons-NOTICE.md"
 codesign --force --sign - "$APP"
 
 echo "Built $(pwd)/$APP"

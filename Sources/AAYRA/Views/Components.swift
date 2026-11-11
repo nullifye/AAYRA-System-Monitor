@@ -53,15 +53,14 @@ struct IconBadge: View {
 }
 
 /// Dashboard card: a large icon on the left, a title with a big headline number, then detail lines.
-struct Card<Header: View, Details: View>: View {
-    let symbol: String
-    let tint: Color
+struct Card<Icon: View, Header: View, Details: View>: View {
+    @ViewBuilder var icon: () -> Icon
     @ViewBuilder var header: () -> Header
     @ViewBuilder var details: () -> Details
 
     var body: some View {
         HStack(alignment: .center, spacing: 12) {
-            IconBadge(symbol: symbol, color: tint)
+            icon()
             VStack(alignment: .leading, spacing: 6) {
                 HStack(alignment: .firstTextBaseline, spacing: 6) { header() }
                 details()
@@ -74,6 +73,16 @@ struct Card<Header: View, Details: View>: View {
         .padding(.vertical, 10)
         .frame(maxWidth: .infinity, alignment: .leading)
         .cardBackground(floating: true)
+    }
+}
+
+extension Card where Icon == IconBadge {
+    /// The usual card: an SF Symbol on a filled circle in the section colour.
+    init(
+        symbol: String, tint: Color, @ViewBuilder header: @escaping () -> Header,
+        @ViewBuilder details: @escaping () -> Details
+    ) {
+        self.init(icon: { IconBadge(symbol: symbol, color: tint) }, header: header, details: details)
     }
 }
 

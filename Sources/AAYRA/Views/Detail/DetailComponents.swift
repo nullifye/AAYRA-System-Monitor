@@ -4,7 +4,14 @@ import SwiftUI
 // Building blocks shared by every detail panel: the panel frame, grouped sections and rows.
 
 /// Which card's detail panel is open.
-enum DetailKind: Hashable { case cpu, gpu, storage, memory, battery, network }
+enum DetailKind: Hashable {
+    case cpu, gpu, storage, memory, battery, network
+    /// Agent Usage panel: one agent's card, or the combined "Other Agents" card.
+    case agent(AgentTool)
+    case otherAgents
+    /// The card of an agent that reports context fill rather than a token ledger.
+    case contextFill(AgentTool)
+}
 
 /// A button in a detail panel's header, e.g. "Manage Storage…".
 struct DetailAction {
@@ -21,6 +28,8 @@ struct DetailPanel<Leading: View, Trailing: View>: View {
     let title: String
     var subtitle: String?
     var actions: [DetailAction] = []
+    /// Replaces the symbol badge, e.g. an agent's logo.
+    var icon: AnyView?
     @ViewBuilder var leading: () -> Leading
     @ViewBuilder var trailing: () -> Trailing
 
@@ -51,7 +60,7 @@ struct DetailPanel<Leading: View, Trailing: View>: View {
 
     private var header: some View {
         HStack(spacing: 11) {
-            IconBadge(symbol: symbol, color: tint, size: 36)
+            if let icon { icon } else { IconBadge(symbol: symbol, color: tint, size: 36) }
             VStack(alignment: .leading, spacing: 1) {
                 Text(title).font(.title3.weight(.semibold))
                 if let subtitle {
@@ -177,9 +186,12 @@ struct DetailRow: View {
 
     var body: some View {
         HStack(spacing: 8) {
+            // The label gives way first: a long one (a thread's objective, say) truncates instead of
+            // pushing its value out of the row.
             Text(label)
                 .foregroundStyle(.secondary)
-                .fixedSize()
+                .lineLimit(1)
+                .truncationMode(.tail)
             Spacer(minLength: 8)
             HStack(spacing: 4) {
                 if let dot {
@@ -191,6 +203,7 @@ struct DetailRow: View {
                     .truncationMode(.middle)
                     .contentTransition(.numericText())
                     .textSelection(.enabled)
+                    .fixedSize(horizontal: true, vertical: false)  // never truncated: the label shortens instead
             }
         }
         .font(.body)

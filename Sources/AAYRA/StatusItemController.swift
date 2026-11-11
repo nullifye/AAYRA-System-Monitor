@@ -45,6 +45,8 @@ final class StatusItemController: NSObject {
     private lazy var contextMenu: NSMenu = makeContextMenu()
     /// Optional second menu bar item with live network speed (Settings → Menu Bar).
     private var networkItem: NSStatusItem?
+    private var agentItem: NSStatusItem?
+    private let agentWindow = AgentUsageWindow()
     /// System-wide shortcut that toggles the panel (Settings → General).
     private var hotKey: GlobalHotKey?
     private var registeredShortcut: AppSettings.Shortcut?
@@ -99,7 +101,7 @@ final class StatusItemController: NSObject {
         applyShortcut()
         // Pick up a new shortcut from Settings straight away.
         NotificationCenter.default.addObserver(
-            self, selector: #selector(applyShortcut),
+            self, selector: #selector(settingsDidChange),
             name: UserDefaults.didChangeNotification, object: nil)
 
         let center = NSWorkspace.shared.notificationCenter
@@ -112,6 +114,7 @@ final class StatusItemController: NSObject {
             name: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification, object: nil)
 
         updateLabel()
+        updateAgentItem()
         scheduleNextFrame()
     }
 
@@ -150,6 +153,7 @@ final class StatusItemController: NSObject {
         }
         updateLabel()
         updateNetworkItem()
+        updateAgentItem()
         scheduleNextFrame()
     }
 
@@ -185,6 +189,47 @@ final class StatusItemController: NSObject {
         }
         networkItem = item
         return item
+    }
+
+    /// A dedicated icon and titled window, independent of the hardware status item/panel.
+    private func updateAgentItem() {
+        guard AppSettings.showAgentUsageInMenuBar else {
+            if let item = agentItem {
+                agentWindow.close()
+                NSStatusBar.system.removeStatusItem(item)
+                agentItem = nil
+            }
+            return
+        }
+        guard agentItem == nil else { return }
+        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+        item.autosaveName = "AAYRAAgentUsage"
+        if let button = item.button {
+            let icon = NSImage(systemSymbolName: "sparkles", accessibilityDescription: "Agent Usage")
+            icon?.isTemplate = true
+            button.image = icon
+            button.setAccessibilityLabel("Agent Usage")
+            button.target = self
+            button.action = #selector(handleAgentClick(_:))
+            button.sendAction(on: [.leftMouseUp, .rightMouseUp])
+        }
+        agentItem = item
+    }
+
+    @objc private func handleAgentClick(_ sender: NSStatusBarButton) {
+        if NSApp.currentEvent?.type == .rightMouseUp, let item = agentItem {
+            item.menu = contextMenu
+            sender.performClick(nil)
+            item.menu = nil
+        } else {
+            closePanel()
+            agentWindow.toggle(from: sender)
+        }
+    }
+
+    @objc private func settingsDidChange() {
+        applyShortcut()
+        updateAgentItem()
     }
 
     private func updateLabel() {
@@ -272,6 +317,9 @@ final class StatusItemController: NSObject {
         // No app activation needed: a non-activating panel takes keyboard focus (Escape, ⌘Q, ⌘,)
         // while the app you were using stays active, the way Spotlight's panel works.
         panel.makeKeyAndOrderFront(nil)
+        #if DEBUG
+            DebugLayers.dumpLater(panel, name: "main-panel")
+        #endif
         NSAnimationContext.runAnimationGroup { context in
             context.duration = 0.15
             panel.animator().alphaValue = 1
@@ -324,7 +372,10 @@ final class StatusItemController: NSObject {
                     guard let self else { return }
                     // The click that opened the panel can reach this monitor too (the menu bar is drawn by
                     // another process); clicks on our own icon are handled by the button instead.
-                    let icons = [self.statusItem.button?.window?.frame, self.networkItem?.button?.window?.frame]
+                    let icons = [
+                        self.statusItem.button?.window?.frame, self.networkItem?.button?.window?.frame,
+                        self.agentItem?.button?.window?.frame,
+                    ]
                     if icons.contains(where: { $0?.contains(location) == true }) { return }
                     self.closePanel()
                 }

@@ -37,6 +37,7 @@ struct SettingsView: View {
     @AppStorage(AppSettings.Key.animateIcon) private var animateIcon = true
     @AppStorage(AppSettings.Key.showPercentInMenuBar) private var showPercent = false
     @AppStorage(AppSettings.Key.showNetworkInMenuBar) private var showNetworkSpeed = false
+    @AppStorage(AppSettings.Key.showAgentUsageInMenuBar) private var showAgentUsage = false
     @AppStorage(AppSettings.Key.checkForUpdates) private var checkForUpdates = false
     @AppStorage(AppSettings.Key.alertBatteryLow) private var alertBattery = false
     @AppStorage(AppSettings.Key.alertBatteryDrain) private var alertBatteryDrain = false
@@ -124,11 +125,12 @@ struct SettingsView: View {
                 )
                 .disabled(!animateIcon)
                 Toggle("Show network speed", isOn: $showNetworkSpeed)
+                Toggle("Show Agent Usage", isOn: $showAgentUsage)
             } header: {
                 Text("Menu Bar")
             } footer: {
                 Text(
-                    "The turbine spins faster as CPU load rises. With the animation off, the CPU percentage is always shown. Network speed appears as a separate item you can ⌘-drag."
+                    "Network speed and Agent Usage get their own icons. Agent Usage uses your existing agent sign-ins and local logs; choose agents and drag their rows to reorder them in its panel. Claude Code may ask for Keychain access."
                 )
                 .foregroundStyle(.secondary)
             }

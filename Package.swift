@@ -18,8 +18,9 @@ let package = Package(
             linkerSettings: [
                 .linkedFramework("IOKit"),
                 .linkedFramework("ServiceManagement"),
-                .linkedFramework("DiskArbitration"),   // how external drives are connected (USB, Thunderbolt…)
-                .linkedFramework("Carbon"),            // global keyboard shortcut (RegisterEventHotKey)
+                .linkedFramework("DiskArbitration"),  // how external drives are connected (USB, Thunderbolt…)
+                .linkedFramework("Carbon"),  // global keyboard shortcut (RegisterEventHotKey)
+                .linkedLibrary("sqlite3"),  // read-only local OpenCode token totals
             ]
         ),
         // Unit tests for the parsers and formatters (`swift test`); run by CI on every push.
@@ -27,7 +28,7 @@ let package = Package(
             name: "AAYRATests",
             dependencies: ["AAYRA"],
             path: "Tests/AAYRATests"
-        )
+        ),
     ],
     swiftLanguageModes: [.v5]
 )

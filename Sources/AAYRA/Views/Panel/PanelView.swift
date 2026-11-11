@@ -87,7 +87,7 @@ struct PanelView: View {
 
 /// Cards stacked with a gap, like Notification Center. On macOS 26+ the glass tiles share
 /// one container so they render together efficiently, without merging into each other.
-private struct FloatingStack<Content: View>: View {
+struct FloatingStack<Content: View>: View {
     @ViewBuilder var content: () -> Content
 
     var body: some View {

@@ -7,6 +7,12 @@ enum AppSettings {
         static let animateIcon = "animateIcon"
         static let showPercentInMenuBar = "showPercentInMenuBar"
         static let showNetworkInMenuBar = "showNetworkInMenuBar"
+        static let showAgentUsageInMenuBar = "showAgentUsageInMenuBar"
+        static let agentChoices = "agentUsageChoices"
+        /// Order of the agent rows and cards, as `AgentTool` raw values.
+        static let agentOrder = "agentUsageOrder"
+        /// Off by default: folder names are personal and would show up in screenshots.
+        static let agentShowProjects = "agentUsageShowProjects"
         static let shortcut = "panelShortcut"
         static let checkForUpdates = "checkForUpdates"
         static let lastUpdateCheck = "lastUpdateCheck"
@@ -57,6 +63,17 @@ enum AppSettings {
     static var animateIcon: Bool { bool(Key.animateIcon, default: true) }
     static var showPercentInMenuBar: Bool { bool(Key.showPercentInMenuBar, default: false) }
     static var showNetworkInMenuBar: Bool { bool(Key.showNetworkInMenuBar, default: false) }
+    static var showAgentUsageInMenuBar: Bool { bool(Key.showAgentUsageInMenuBar, default: false) }
+    /// Agents ticked or unticked in the Agent Usage panel, keyed by `AgentTool` id. Missing ids use the default.
+    static var agentChoices: [String: Bool] {
+        get { defaults.dictionary(forKey: Key.agentChoices) as? [String: Bool] ?? [:] }
+        set { defaults.set(newValue, forKey: Key.agentChoices) }
+    }
+    /// Order chosen by dragging rows in Show Agents. Empty means the built-in order.
+    static var agentOrder: [String] {
+        get { defaults.stringArray(forKey: Key.agentOrder) ?? [] }
+        set { defaults.set(newValue, forKey: Key.agentOrder) }
+    }
     /// Automatic update checks are off unless turned on in Settings → Updates.
     static var checkForUpdates: Bool { bool(Key.checkForUpdates, default: false) }
     /// The GPU card is off unless turned on in Settings → Sections.

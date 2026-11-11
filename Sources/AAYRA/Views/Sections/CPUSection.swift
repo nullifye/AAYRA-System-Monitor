@@ -101,7 +101,8 @@ struct CPUDetail: View {
                 ForEach(monitor.topCPUProcesses) { process in
                     ProcessRow(
                         name: process.name, value: String(format: "%.1f%%", process.percent),
-                        fraction: process.percent / 100, tint: Palette.cpu, count: process.count,
+                        fraction: process.percent / 100, tint: Palette.cpu, iconPath: process.id,
+                        count: process.count,
                         members: process.members.map {
                             .init(id: $0.id, name: $0.name, value: String(format: "%.1f%%", $0.value))
                         },

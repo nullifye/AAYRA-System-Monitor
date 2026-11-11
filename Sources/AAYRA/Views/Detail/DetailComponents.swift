@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 // Building blocks shared by every detail panel: the panel frame, grouped sections and rows.
@@ -209,6 +210,8 @@ struct ProcessRow: View {
     let value: String
     let fraction: Double
     let tint: Color
+    /// App bundle or executable path used only to show the top-level process icon.
+    var iconPath: String?
     /// How many processes are added together under this name (an app and its helpers).
     var count = 1
     var members: [Member] = []
@@ -232,6 +235,7 @@ struct ProcessRow: View {
             .buttonStyle(.plain)
             .accessibilityValue(isExpanded ? "Expanded" : "Collapsed")
             .accessibilityHint(isExpanded ? "Hides its processes" : "Shows its \(count) processes")
+            .help(isExpanded ? "Click to hide processes" : "Click to show processes")
         } else {
             content
         }
@@ -240,15 +244,8 @@ struct ProcessRow: View {
     private var content: some View {
         VStack(alignment: .leading, spacing: 3) {
             HStack(spacing: 4) {
-                if isExpandable {
-                    // Disclosure triangle, as in macOS outline views: points right when
-                    // collapsed and turns down when expanded.
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundStyle(.secondary)
-                        .rotationEffect(.degrees(isExpanded ? 90 : 0))
-                        .frame(width: 12)
-                        .accessibilityHidden(true)
+                if let iconPath {
+                    ProcessIcon(path: iconPath)
                 }
                 Text(name)
                     .lineLimit(1)
@@ -297,6 +294,45 @@ struct ProcessRow: View {
         .font(.callout)
         .foregroundStyle(.secondary)
         .padding(.leading, 14)
+    }
+}
+
+/// Resolves each app icon once, rather than asking Launch Services again on every process update.
+private struct ProcessIcon: View {
+    let path: String
+
+    var body: some View {
+        Group {
+            if let icon = ProcessIconCache.icon(for: path) {
+                Image(nsImage: icon)
+                    .resizable()
+                    .interpolation(.high)
+                    .scaledToFit()
+            } else {
+                Image(systemName: "terminal")
+                    .font(.system(size: 13))
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(width: 18, height: 18)
+        .accessibilityHidden(true)
+    }
+}
+
+@MainActor
+private enum ProcessIconCache {
+    private static let images: NSCache<NSString, NSImage> = {
+        let cache = NSCache<NSString, NSImage>()
+        cache.countLimit = 128
+        return cache
+    }()
+
+    static func icon(for path: String) -> NSImage? {
+        guard path.hasPrefix("/") else { return nil }  // name-only processes have no file to look up
+        if let icon = images.object(forKey: path as NSString) { return icon }
+        let icon = NSWorkspace.shared.icon(forFile: path)
+        images.setObject(icon, forKey: path as NSString)
+        return icon
     }
 }
 

@@ -88,7 +88,8 @@ struct MemoryDetail: View {
                     ForEach(topProcesses) { process in
                         ProcessRow(
                             name: process.name, value: Format.bytes(process.footprint),
-                            fraction: share(process.footprint), tint: Palette.memory, count: process.count,
+                            fraction: share(process.footprint), tint: Palette.memory, iconPath: process.id,
+                            count: process.count,
                             members: process.members.map {
                                 .init(id: $0.id, name: $0.name, value: Format.bytes(UInt64($0.value)))
                             },

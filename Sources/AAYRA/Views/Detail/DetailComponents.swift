@@ -223,7 +223,9 @@ struct ProcessRow: View {
     var body: some View {
         if isExpandable {
             Button {
-                withAnimation(.snappy(duration: 0.25)) { onToggle() }
+                // Animating the row height makes NSPopover resize and re-anchor on every frame,
+                // which is costly for a tall detail panel on a large display.
+                onToggle()
             } label: {
                 content.contentShape(Rectangle())
             }
@@ -268,7 +270,6 @@ struct ProcessRow: View {
             if isExpanded {
                 memberList
                     .padding(.top, 3)
-                    .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
         .font(.body)

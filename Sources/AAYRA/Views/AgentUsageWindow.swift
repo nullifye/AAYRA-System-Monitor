@@ -20,6 +20,8 @@ enum AgentUsageLayout {
 final class AgentUsageMonitor {
     private(set) var statuses: [AgentUsageStatus.Kind: AgentUsageStatus] = [:]
     private(set) var isRefreshing = false
+    private var refreshesMenuBarOnly = false
+    private var pendingPanelRefresh = false
     private(set) var localTokens: [AgentTool: AgentTokenUsage] = [:]
     private(set) var localTokensChecked = false
     /// Perch CLI thread context snapshots, newest first. Read from disk; costs no tokens.
@@ -32,6 +34,20 @@ final class AgentUsageMonitor {
     private(set) var choices = AppSettings.agentChoices
     /// User order for the chooser rows and panel cards; new agents are appended automatically.
     private(set) var order = AgentTool.ordered(AppSettings.agentOrder)
+    private(set) var menuBarSelection = AppSettings.agentMenuBarTools
+
+    var menuBarTools: [AgentTool] { order.filter { menuBarSelection.contains($0) && isShown($0) } }
+
+    func toggleMenuBar(_ tool: AgentTool) {
+        if menuBarSelection.contains(tool) {
+            menuBarSelection.removeAll { $0 == tool }
+        } else {
+            guard tool.supportsMenuBarPercent, menuBarSelection.count < AgentMenuBarSelection.limit else { return }
+            setShown(tool, true)
+            menuBarSelection.append(tool)
+        }
+        AppSettings.agentMenuBarTools = menuBarSelection
+    }
 
     /// Ticked in the panel's agent list, or by default: the first three agents found on this Mac.
     func isShown(_ tool: AgentTool) -> Bool {
@@ -43,6 +59,10 @@ final class AgentUsageMonitor {
     func setShown(_ tool: AgentTool, _ shown: Bool) {
         choices[tool.rawValue] = shown
         AppSettings.agentChoices = choices
+        if !shown {
+            menuBarSelection.removeAll { $0 == tool }
+            AppSettings.agentMenuBarTools = menuBarSelection
+        }
     }
 
     /// Moves a dragged row directly before the row it was dropped on, and saves the new order.
@@ -57,20 +77,26 @@ final class AgentUsageMonitor {
         statuses[kind] ?? .unavailable(kind, isRefreshing ? "Checking…" : "Not checked yet")
     }
 
-    func refresh() {
-        guard !isRefreshing else { return }
+    func refresh(menuBarOnly: Bool = false) {
+        guard !isRefreshing else {
+            if !menuBarOnly && refreshesMenuBarOnly { pendingPanelRefresh = true }
+            return
+        }
         isRefreshing = true
-        localTokensChecked = false
-        localTokens = [:]
+        refreshesMenuBarOnly = menuBarOnly
         detected = AgentTool.detectedOnThisMac()
         // Unticked agents are skipped entirely: no files scanned, no sign-in read, no request sent.
-        let shown = Set(shownTools)
+        let shown = Set(menuBarOnly ? menuBarTools : shownTools)
         let kinds = shown.compactMap(\.account)
-        let tokensTask = Task.detached(priority: .utility) { AgentLocalTokens.today(for: shown) }
-        Task { [weak self] in
-            let tokens = await tokensTask.value
-            self?.localTokens = tokens
-            self?.localTokensChecked = true
+        if !menuBarOnly {
+            localTokensChecked = false
+            localTokens = [:]
+            let tokensTask = Task.detached(priority: .utility) { AgentLocalTokens.today(for: shown) }
+            Task { [weak self] in
+                let tokens = await tokensTask.value
+                self?.localTokens = tokens
+                self?.localTokensChecked = true
+            }
         }
         // Context-fill agents keep no token ledger: a file read each, no network.
         // Unticked agents are not read at all, so skip the scan when the agent is hidden.
@@ -82,7 +108,7 @@ final class AgentUsageMonitor {
                 self?.perchChecked = true
                 self?.perchCheckedAt = Date()
             }
-        } else {
+        } else if !menuBarOnly {
             perchThreads = []
             perchChecked = false
             perchCheckedAt = nil
@@ -96,8 +122,12 @@ final class AgentUsageMonitor {
                     return result
                 }
             }.value
-            self?.statuses = fresh
+            self?.statuses.merge(fresh) { _, new in new }
             self?.isRefreshing = false
+            if let self, self.pendingPanelRefresh {
+                self.pendingPanelRefresh = false
+                self.refresh()
+            }
         }
     }
 
@@ -146,6 +176,41 @@ final class AgentUsageWindow: NSObject {
     private weak var anchor: NSStatusBarButton?
     /// Last measured content height, so the panel reopens at its real size.
     private var lastContentHeight: CGFloat?
+    private var lastMenuBarRefresh = Date.distantPast
+    private var lastMenuBarTools: [AgentTool] = []
+
+    /// Uses the panel's monitor; background reads are limited to agents pinned to the menu bar.
+    func updateMenuBarMonitoring() {
+        let tools = monitor.menuBarTools
+        guard !tools.isEmpty, !panel.isVisible, !monitor.isRefreshing,
+            tools != lastMenuBarTools || Date().timeIntervalSince(lastMenuBarRefresh) >= 120
+        else { return }
+        lastMenuBarTools = tools
+        lastMenuBarRefresh = Date()
+        monitor.refresh(menuBarOnly: true)
+    }
+
+    var menuBarTitle: NSAttributedString {
+        AgentMenuBarText.make(
+            monitor.menuBarTools.map { tool in
+                let percent =
+                    tool.account.flatMap { monitor.status(for: $0).menuBarRemainingPercent }
+                    ?? (tool.reportsContextFill ? monitor.perchThreads.first?.percent : nil)
+                return (name: tool.menuBarName, percent: percent)
+            })
+    }
+
+    var menuBarAccessibilityLabel: String {
+        monitor.menuBarTools.map { tool in
+            if let kind = tool.account, let percent = monitor.status(for: kind).menuBarRemainingPercent {
+                return "\(tool.name): \(Int(percent.rounded())) percent remaining"
+            }
+            if tool.reportsContextFill, let percent = monitor.perchThreads.first?.percent {
+                return "\(tool.name): \(Int(percent.rounded())) percent context used"
+            }
+            return "\(tool.name): percentage unavailable"
+        }.joined(separator: ", ")
+    }
 
     override init() {
         super.init()
@@ -562,6 +627,9 @@ private struct AgentChooser: View {
                     .font(.caption).foregroundStyle(.tertiary)
             }
             .padding(.horizontal, 12).padding(.top, 6).padding(.bottom, 4)
+            Text("Tap an eye to show up to 3 agents in the menu bar.")
+                .font(.caption).foregroundStyle(.secondary)
+                .padding(.horizontal, 12).padding(.bottom, 4)
             VStack(spacing: 0) {
                 ForEach(Array(monitor.order.enumerated()), id: \.element) { index, tool in
                     if index > 0 { Divider().padding(.leading, 72) }
@@ -577,28 +645,51 @@ private struct AgentChooser: View {
     private func row(_ tool: AgentTool) -> some View {
         let found = monitor.detected.contains(tool)
         // The checkbox is its own control so it centres on the two-line row (a labelled checkbox
-        // aligns to the first line); the whole row toggles it.
+        // aligns to the first line); the name and icon also toggle it.
         let isOn = Binding(get: { monitor.isShown(tool) }, set: { monitor.setShown(tool, $0) })
+        let pinned = monitor.menuBarSelection.contains(tool)
+        let atLimit = monitor.menuBarSelection.count >= AgentMenuBarSelection.limit
         return HStack(alignment: .center, spacing: 10) {
             Toggle(tool.name, isOn: isOn)
                 .toggleStyle(.checkbox)
                 .labelsHidden()
                 .controlSize(.large)
-            AgentToolIcon(tool: tool, size: 24)
-                .opacity(found ? 1 : 0.5)
-            VStack(alignment: .leading, spacing: 1) {
-                Text(tool.name).font(.body)
-                Text(detail(tool, found: found))
-                    .font(.callout).foregroundStyle(.secondary)
+            HStack(spacing: 10) {
+                AgentToolIcon(tool: tool, size: 24)
+                    .opacity(found ? 1 : 0.5)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(tool.name).font(.body)
+                    Text(detail(tool, found: found))
+                        .font(.callout).foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 8)
             }
-            Spacer(minLength: 8)
+            .contentShape(Rectangle())
+            .onTapGesture { isOn.wrappedValue.toggle() }
+            Button {
+                monitor.toggleMenuBar(tool)
+            } label: {
+                Image(systemName: pinned ? "eye.fill" : "eye.slash")
+                    .foregroundStyle(pinned ? Color.accentColor : Color.secondary)
+                    .frame(width: 24, height: 24)
+            }
+            .buttonStyle(.borderless)
+            .disabled(!tool.supportsMenuBarPercent || (!pinned && atLimit))
+            .accessibilityLabel("\(pinned ? "Hide" : "Show") \(tool.name) percentage in menu bar")
+            .help(
+                !tool.supportsMenuBarPercent
+                    ? "This agent reports tokens only; no percentage available"
+                    : pinned
+                        ? "Hide percentage from menu bar"
+                        : atLimit
+                            ? "You can show up to 3 agents. Hide one first."
+                            : "Show percentage in menu bar")
             Image(systemName: "line.3.horizontal")
                 .font(.callout)
                 .foregroundStyle(.tertiary)
                 .help("Drag to reorder")
         }
         .contentShape(Rectangle())
-        .onTapGesture { isOn.wrappedValue.toggle() }
         .padding(.horizontal, 12).padding(.vertical, 6)
         .help(tool.dataHint)
         .onDrag { NSItemProvider(object: tool.rawValue as NSString) }

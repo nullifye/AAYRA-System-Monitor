@@ -11,6 +11,7 @@ enum AppSettings {
         static let agentChoices = "agentUsageChoices"
         /// Order of the agent rows and cards, as `AgentTool` raw values.
         static let agentOrder = "agentUsageOrder"
+        static let agentMenuBarTools = "agentUsageMenuBarTools"
         /// Off by default: folder names are personal and would show up in screenshots.
         static let agentShowProjects = "agentUsageShowProjects"
         static let shortcut = "panelShortcut"
@@ -73,6 +74,12 @@ enum AppSettings {
     static var agentOrder: [String] {
         get { defaults.stringArray(forKey: Key.agentOrder) ?? [] }
         set { defaults.set(newValue, forKey: Key.agentOrder) }
+    }
+    static var agentMenuBarTools: [AgentTool] {
+        get { AgentMenuBarSelection.validated(defaults.stringArray(forKey: Key.agentMenuBarTools) ?? []) }
+        set {
+            defaults.set(AgentMenuBarSelection.validated(newValue.map(\.rawValue)).map(\.rawValue), forKey: Key.agentMenuBarTools)
+        }
     }
     /// Automatic update checks are off unless turned on in Settings → Updates.
     static var checkForUpdates: Bool { bool(Key.checkForUpdates, default: false) }

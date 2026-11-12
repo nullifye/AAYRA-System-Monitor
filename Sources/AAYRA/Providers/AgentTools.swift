@@ -127,6 +127,29 @@ enum AgentTool: String, CaseIterable, Identifiable, Sendable {
     /// True for the card that reports context fill rather than a token ledger.
     var reportsContextFill: Bool { self == .perch }
 
+    var supportsMenuBarPercent: Bool { account != nil || reportsContextFill }
+
+    /// Compact labels for every supported agent, independent of which agents this Mac has installed.
+    var menuBarName: String {
+        switch self {
+        case .claude: "Claude"
+        case .codex: "Codex"
+        case .copilot: "Copilot"
+        case .openCode: "OpenCode"
+        case .gemini: "Gemini"
+        case .qwen: "Qwen"
+        case .cline: "Cline"
+        case .rooCode: "Roo"
+        case .kiloCode: "Kilo"
+        case .kimi: "Kimi"
+        case .pi: "Pi"
+        case .ohMyPi: "OMP"
+        case .cherryStudio: "Cherry"
+        case .zcode: "ZCode"
+        case .perch: "Perch"
+        }
+    }
+
     /// A saved order: unknown ids dropped, duplicates removed, new agents appended in list order.
     static func ordered(_ rawValues: [String]) -> [AgentTool] {
         var seen = Set<AgentTool>()
@@ -152,6 +175,18 @@ enum AgentTool: String, CaseIterable, Identifiable, Sendable {
     /// Cheap existence checks only: no file is opened or read.
     static func detectedOnThisMac(_ paths: AgentPaths = .init()) -> Set<AgentTool> {
         Set(allCases.filter { tool in tool.dataRoots(paths).contains { FileManager.default.fileExists(atPath: $0.path) } })
+    }
+}
+
+enum AgentMenuBarSelection {
+    static let limit = 3
+
+    static func validated(_ rawValues: [String]) -> [AgentTool] {
+        var seen = Set<AgentTool>()
+        return Array(
+            rawValues.compactMap { AgentTool(rawValue: $0) }
+                .filter { $0.supportsMenuBarPercent && seen.insert($0).inserted }
+                .prefix(limit))
     }
 }
 

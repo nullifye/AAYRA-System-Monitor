@@ -13,6 +13,32 @@ struct AgentUsageTests {
     }
     private var nowMs: Int64 { Int64(now.timeIntervalSince1970 * 1_000) }
 
+    @Test func menuBarSelectionLimitsAgentsAndPreservesSelectionOrder() {
+        #expect(
+            AgentMenuBarSelection.validated(["codex", "claude", "copilot", "openCode", "perch"]) == [.codex, .claude, .copilot])
+        #expect(AgentMenuBarSelection.validated([]).isEmpty)
+    }
+
+    @Test func menuBarSelectionDropsDuplicatesUnknownAgentsAndTokenOnlyAgents() {
+        #expect(
+            AgentMenuBarSelection.validated(["unknown", "gemini", "codex", "codex", "pi", "perch", "claude"])
+                == [.codex, .perch, .claude])
+    }
+
+    @Test func menuBarPercentUsesTightestValidAllowanceIncludingZero() {
+        func status(_ percentages: [Double?]) -> AgentUsageStatus {
+            .init(
+                kind: .codex,
+                allowances: percentages.enumerated().map {
+                    .init(name: "Window \($0.offset)", remaining: "", resetsAt: now, remainingPercent: $0.element)
+                }, detail: "", checkedAt: now)
+        }
+        #expect(status([72, 41, nil]).menuBarRemainingPercent == 41)
+        #expect(status([72, 0]).menuBarRemainingPercent == 0)
+        #expect(status([nil, .nan, .infinity, -1, 101]).menuBarRemainingPercent == nil)
+        #expect(AgentUsageStatus.unavailable(.codex, "Unavailable").menuBarRemainingPercent == nil)
+    }
+
     @Test func codexOnlyAcceptsRecentRateLimitEvents() throws {
         let observed = ISO8601DateFormatter().string(from: now)
         let text = """

@@ -38,6 +38,11 @@ struct AgentUsageStatus: Equatable, Identifiable, Sendable {
     var facts: [AgentFact] = []
     var id: Kind { kind }
 
+    /// Matches the headline on the account card: the allowance that runs out first.
+    var menuBarRemainingPercent: Double? {
+        allowances.compactMap(\.remainingPercent).filter { $0.isFinite && (0...100).contains($0) }.min()
+    }
+
     static func unavailable(_ kind: Kind, _ reason: String) -> Self {
         .init(kind: kind, allowances: [], detail: reason, checkedAt: nil)
     }

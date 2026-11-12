@@ -201,19 +201,42 @@ final class StatusItemController: NSObject {
             }
             return
         }
-        guard agentItem == nil else { return }
-        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-        item.autosaveName = "AAYRAAgentUsage"
-        if let button = item.button {
-            let icon = NSImage(systemSymbolName: "sparkles", accessibilityDescription: "Agent Usage")
-            icon?.isTemplate = true
-            button.image = icon
-            button.setAccessibilityLabel("Agent Usage")
-            button.target = self
-            button.action = #selector(handleAgentClick(_:))
-            button.sendAction(on: [.leftMouseUp, .rightMouseUp])
+        if agentItem == nil {
+            let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+            item.autosaveName = "AAYRAAgentUsage"
+            if let button = item.button {
+                button.font = .monospacedDigitSystemFont(ofSize: NSFont.systemFontSize - 1, weight: .medium)
+                button.target = self
+                button.action = #selector(handleAgentClick(_:))
+                button.sendAction(on: [.leftMouseUp, .rightMouseUp])
+            }
+            agentItem = item
         }
-        agentItem = item
+        agentWindow.updateMenuBarMonitoring()
+        guard let item = agentItem, let button = item.button else { return }
+        let title = agentWindow.menuBarTitle
+        if title.length == 0 {
+            if button.image == nil {
+                let icon = NSImage(systemSymbolName: "sparkles", accessibilityDescription: "Agent Usage")
+                icon?.isTemplate = true
+                button.image = icon
+                button.title = ""
+                button.imagePosition = .imageOnly
+                item.length = NSStatusItem.squareLength
+            }
+            button.setAccessibilityLabel("Agent Usage")
+            button.toolTip = "Agent Usage"
+        } else {
+            if !button.attributedTitle.isEqual(to: title) || button.image != nil {
+                button.image = nil
+                button.attributedTitle = title
+                button.imagePosition = .noImage
+                item.length = NSStatusItem.variableLength
+            }
+            let label = agentWindow.menuBarAccessibilityLabel
+            button.setAccessibilityLabel(label)
+            button.toolTip = label
+        }
     }
 
     @objc private func handleAgentClick(_ sender: NSStatusBarButton) {
@@ -449,6 +472,29 @@ final class StatusItemController: NSObject {
 
     @objc private func openActivityMonitor() { SystemActions.openActivityMonitor() }
     @objc private func openSettings() { SettingsWindow.show() }
+}
+
+enum AgentMenuBarText {
+    static func percentageColor(_ percent: Double) -> NSColor {
+        percent <= 10 ? .systemRed : percent <= 30 ? .systemOrange : .labelColor
+    }
+
+    static func make(_ agents: [(name: String, percent: Double?)]) -> NSAttributedString {
+        let text = NSMutableAttributedString(string: "")
+        let base: [NSAttributedString.Key: Any] = [
+            .font: NSFont.monospacedDigitSystemFont(ofSize: NSFont.systemFontSize - 1, weight: .medium),
+            .foregroundColor: NSColor.labelColor,
+        ]
+        for (index, agent) in agents.enumerated() {
+            if index > 0 { text.append(NSAttributedString(string: " · ", attributes: base)) }
+            text.append(NSAttributedString(string: agent.name + " ", attributes: base))
+            var attributes = base
+            if let percent = agent.percent { attributes[.foregroundColor] = percentageColor(percent) }
+            let value = agent.percent.map { "\(Int($0.rounded()))%" } ?? "—"
+            text.append(NSAttributedString(string: value, attributes: attributes))
+        }
+        return text
+    }
 }
 
 /// Two-line upload/download text for the menu bar, drawn as a template image so it follows

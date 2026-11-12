@@ -1,3 +1,4 @@
+import AppKit
 import Testing
 
 @testable import AAYRA
@@ -64,6 +65,27 @@ struct ShortcutTests {
 
 @MainActor
 struct StatusItemLabelTests {
+    @Test func agentPercentColorsUseWarningBoundaries() {
+        #expect(AgentMenuBarText.percentageColor(0) == .systemRed)
+        #expect(AgentMenuBarText.percentageColor(10) == .systemRed)
+        #expect(AgentMenuBarText.percentageColor(10.01) == .systemOrange)
+        #expect(AgentMenuBarText.percentageColor(30) == .systemOrange)
+        #expect(AgentMenuBarText.percentageColor(30.01) == .labelColor)
+    }
+
+    @Test func agentMenuBarColorsOnlyPercentagesAndKeepsShortNames() {
+        let title = AgentMenuBarText.make([
+            (AgentTool.claude.menuBarName, 10), (AgentTool.codex.menuBarName, 30), ("Copilot", nil),
+        ])
+        #expect(title.string == "Claude 10% · Codex 30% · Copilot —")
+        let string = title.string as NSString
+        for (text, color) in [("Claude", NSColor.labelColor), ("10%", .systemRed), ("30%", .systemOrange), ("—", .labelColor)] {
+            let actual = title.attribute(.foregroundColor, at: string.range(of: text).location, effectiveRange: nil) as? NSColor
+            #expect(actual == color)
+        }
+        #expect(AgentMenuBarText.make([]).length == 0)
+    }
+
     @Test func cpuLabelHasConstantWidthFromOneToThreeDigits() {
         let titles = [0, 9, 10, 99, 100].map(StatusItemController.cpuTitle)
         #expect(titles.allSatisfy { $0.count == 5 })

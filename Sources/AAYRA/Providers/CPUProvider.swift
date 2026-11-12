@@ -1,14 +1,22 @@
 import Darwin
 
+struct CPUCoreUsage: Equatable {
+    var user: Double
+    var system: Double
+
+    var total: Double { user + system }
+}
+
 struct CPUStats: Equatable {
     var total: Double = 0  // 0...1
     var user: Double = 0
     var system: Double = 0
-    var perCore: [Double] = []
+    var perCoreUsage: [CPUCoreUsage] = []
+    var perCore: [Double] { perCoreUsage.map(\.total) }
     var loadAverage: (Double, Double, Double) = (0, 0, 0)
 
     static func == (a: CPUStats, b: CPUStats) -> Bool {
-        a.total == b.total && a.user == b.user && a.system == b.system && a.perCore == b.perCore
+        a.total == b.total && a.user == b.user && a.system == b.system && a.perCoreUsage == b.perCoreUsage
             && a.loadAverage == b.loadAverage
     }
 }
@@ -48,7 +56,7 @@ final class CPUProvider {
         defer { previous = current }
         guard previous.count == current.count else { return nil }
 
-        var perCore: [Double] = []
+        var perCore: [CPUCoreUsage] = []
         var sumUser = 0.0, sumSystem = 0.0, sumAll = 0.0
         for (now, before) in zip(current, previous) {
             // Wrapping subtraction handles 32-bit counter overflow.
@@ -56,7 +64,7 @@ final class CPUProvider {
             let system = Double(now.system &- before.system)
             let idle = Double(now.idle &- before.idle)
             let all = user + system + idle
-            perCore.append(all > 0 ? (user + system) / all : 0)
+            perCore.append(CPUCoreUsage(user: all > 0 ? user / all : 0, system: all > 0 ? system / all : 0))
             sumUser += user; sumSystem += system; sumAll += all
         }
 
@@ -68,7 +76,7 @@ final class CPUProvider {
             total: (sumUser + sumSystem) / sumAll,
             user: sumUser / sumAll,
             system: sumSystem / sumAll,
-            perCore: perCore,
+            perCoreUsage: perCore,
             loadAverage: (loads[0], loads[1], loads[2])
         )
     }

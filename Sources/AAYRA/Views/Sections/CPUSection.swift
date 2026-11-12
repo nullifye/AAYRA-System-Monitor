@@ -58,12 +58,11 @@ struct CPUDetail: View {
             DetailSection("Cores") {
                 if let groups {
                     CoreCluster(title: "Performance", loads: groups.p, tint: Palette.cpu)
-                    CoreCluster(title: "Efficiency", loads: groups.e, tint: Palette.cpuEfficiency)
+                    CoreCluster(title: "Efficiency", loads: groups.e, tint: Palette.cpu)
                 } else {
-                    CoreCluster(title: "All cores", loads: monitor.cpu.perCore, tint: Palette.cpu)
+                    CoreCluster(title: "All cores", loads: cpu.perCoreUsage, tint: Palette.cpu)
                 }
             }
-            topProcesses
         } trailing: {
             DetailSection("Chip") {
                 DetailRow("Chip", MachineInfo.chip)
@@ -90,6 +89,7 @@ struct CPUDetail: View {
                     DetailRow("Kernel", "Darwin \(kernel)" + (ChipInfo.build.map { " (\($0))" } ?? ""))
                 }
             }
+            topProcesses
         }
     }
 
@@ -123,8 +123,8 @@ struct CPUDetail: View {
     }
 
     /// Per-core loads split into performance and efficiency clusters, when the layout is known.
-    private var groups: (p: [Double], e: [Double])? {
-        let clusters = ChipInfo.coreClusters, loads = monitor.cpu.perCore
+    private var groups: (p: [CPUCoreUsage], e: [CPUCoreUsage])? {
+        let clusters = ChipInfo.coreClusters, loads = monitor.cpu.perCoreUsage
         guard clusters.count == loads.count, !clusters.isEmpty else { return nil }
         let pairs = zip(clusters, loads)
         return (pairs.filter { $0.0 == "P" }.map(\.1), pairs.filter { $0.0 == "E" }.map(\.1))
@@ -132,11 +132,12 @@ struct CPUDetail: View {
 
 }
 
-/// One CPU cluster: name, core count and average on top, then a labelled bar per core.
+/// One CPU cluster with a live, stacked user/system meter per core.
 private struct CoreCluster: View {
     let title: String
-    let loads: [Double]
+    let loads: [CPUCoreUsage]
     let tint: Color
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -150,17 +151,38 @@ private struct CoreCluster: View {
                     .contentTransition(.numericText())
             }
             .font(.body)
+            HStack(spacing: 12) {
+                Label {
+                    Text("User")
+                } icon: {
+                    Circle().fill(tint).frame(width: 6, height: 6)
+                }
+                Label {
+                    Text("System")
+                } icon: {
+                    Circle().fill(Palette.cpuSystem).frame(width: 6, height: 6)
+                }
+            }
+            .font(.caption2)
+            .foregroundStyle(.secondary)
             HStack(alignment: .bottom, spacing: 5) {
                 ForEach(Array(loads.enumerated()), id: \.offset) { index, load in
                     VStack(spacing: 3) {
                         ZStack(alignment: .bottom) {
-                            RoundedRectangle(cornerRadius: 4, style: .continuous).fill(.quaternary)
-                            RoundedRectangle(cornerRadius: 4, style: .continuous)
-                                .fill(color(for: load).gradient)
-                                .frame(height: max(3, 34 * min(load, 1)))
+                            Rectangle().fill(.quaternary)
+                            VStack(spacing: 0) {
+                                Rectangle()
+                                    .fill(tint)
+                                    .frame(height: 58 * load.user)
+                                Rectangle()
+                                    .fill(Palette.cpuSystem)
+                                    .frame(height: 58 * load.system)
+                            }
                         }
-                        .frame(height: 34)
-                        Text("\(Int((load * 100).rounded()))")
+                        .frame(height: 58)
+                        .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
+                        .animation(reduceMotion ? nil : .easeOut(duration: 0.25), value: load)
+                        Text("\(Int((load.total * 100).rounded()))")
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                             .monospacedDigit()
@@ -168,20 +190,17 @@ private struct CoreCluster: View {
                     .frame(maxWidth: 40)
                     .accessibilityElement()
                     .accessibilityLabel("Core \(index + 1)")
-                    .accessibilityValue(Format.percent(load))
+                    .accessibilityValue(
+                        "\(Format.percent(load.total)) total, \(Format.percent(load.user)) user, \(Format.percent(load.system)) system"
+                    )
                 }
             }
-            // No animation: easing ten bars every second cost about 10 % CPU while this panel was open.
         }
         .padding(.vertical, 3)
     }
 
     private var average: String {
-        loads.isEmpty ? "—" : Format.percent(loads.reduce(0, +) / Double(loads.count))
-    }
-
-    private func color(for load: Double) -> Color {
-        load > 0.9 ? .red : load > 0.7 ? .orange : tint
+        loads.isEmpty ? "—" : Format.percent(loads.reduce(0) { $0 + $1.total } / Double(loads.count))
     }
 }
 

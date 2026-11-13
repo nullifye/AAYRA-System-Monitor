@@ -245,7 +245,10 @@ final class StatusItemController: NSObject {
             }
             let label = agentWindow.menuBarAccessibilityLabel
             button.setAccessibilityLabel(label)
-            button.toolTip = label
+            button.toolTip =
+                label
+                .replacingOccurrences(of: " percent ", with: "% ")
+                .replacingOccurrences(of: "percentage unavailable", with: "% unavailable")
         }
     }
 
@@ -485,8 +488,30 @@ final class StatusItemController: NSObject {
 }
 
 enum AgentMenuBarText {
+    struct Entry {
+        let name: String
+        let percent: Double?
+        var reportsUsage = false
+
+        var color: NSColor {
+            percent.map { percentageColor($0, reportsUsage: reportsUsage) } ?? .white
+        }
+    }
+
+    /// Fully opaque orange and red, with lighter shades for dark menu bars.
+    static let warningColor = NSColor(name: "AgentMenuBarWarning") { appearance in
+        appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+            ? NSColor(srgbRed: 1, green: 173 / 255, blue: 96 / 255, alpha: 1)
+            : NSColor(srgbRed: 173 / 255, green: 79 / 255, blue: 0, alpha: 1)
+    }
+    static let criticalColor = NSColor(name: "AgentMenuBarCritical") { appearance in
+        appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+            ? NSColor(srgbRed: 1, green: 130 / 255, blue: 120 / 255, alpha: 1)
+            : NSColor(srgbRed: 201 / 255, green: 52 / 255, blue: 42 / 255, alpha: 1)
+    }
+
     /// A compact column per agent: small name above a larger percentage, in a 22-point menu bar.
-    static func image(_ agents: [(name: String, percent: Double?)], appearance: NSAppearance) -> NSImage {
+    static func image(_ agents: [Entry], appearance: NSAppearance) -> NSImage {
         let nameFont = NSFont.systemFont(ofSize: 8, weight: .medium)
         let valueFont = NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .semibold)
         let columns = agents.map { agent in
@@ -495,7 +520,10 @@ enum AgentMenuBarText {
                 string: agent.name, attributes: [.font: nameFont, .foregroundColor: NSColor.labelColor])
             let percent = NSAttributedString(
                 string: value,
-                attributes: [.font: valueFont, .foregroundColor: agent.percent.map(percentageColor) ?? NSColor.labelColor])
+                attributes: [
+                    .font: valueFont,
+                    .foregroundColor: agent.color.withAlphaComponent(1),
+                ])
             return (name: name, percent: percent, width: ceil(max(name.size().width, percent.size().width)))
         }
         let gap: CGFloat = 8
@@ -513,11 +541,14 @@ enum AgentMenuBarText {
         }
     }
 
-    static func percentageColor(_ percent: Double) -> NSColor {
-        percent <= 10 ? .systemRed : percent <= 30 ? .systemOrange : .labelColor
+    static func percentageColor(_ percent: Double, reportsUsage: Bool = false) -> NSColor {
+        if reportsUsage {
+            return percent >= 90 ? criticalColor : percent >= 70 ? warningColor : .white
+        }
+        return percent <= 10 ? criticalColor : percent <= 30 ? warningColor : .white
     }
 
-    static func make(_ agents: [(name: String, percent: Double?)]) -> NSAttributedString {
+    static func make(_ agents: [Entry]) -> NSAttributedString {
         let text = NSMutableAttributedString(string: "")
         let base: [NSAttributedString.Key: Any] = [
             .font: NSFont.monospacedDigitSystemFont(ofSize: NSFont.systemFontSize - 1, weight: .medium),
@@ -527,7 +558,7 @@ enum AgentMenuBarText {
             if index > 0 { text.append(NSAttributedString(string: " · ", attributes: base)) }
             text.append(NSAttributedString(string: agent.name + " ", attributes: base))
             var attributes = base
-            if let percent = agent.percent { attributes[.foregroundColor] = percentageColor(percent) }
+            attributes[.foregroundColor] = agent.color
             let value = agent.percent.map { "\(Int($0.rounded()))%" } ?? "—"
             text.append(NSAttributedString(string: value, attributes: attributes))
         }

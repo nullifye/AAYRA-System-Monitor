@@ -13,16 +13,54 @@ struct AgentUsageTests {
     }
     private var nowMs: Int64 { Int64(now.timeIntervalSince1970 * 1_000) }
 
+    @Test func firstFiveShownAgentsHaveCardsAndTheRestStayInOrder() {
+        let tools: [AgentTool] = [.qwen, .kimi, .pi, .claude, .perch, .codex, .gemini, .rooCode]
+        let cards = AgentPanelEntry.make(shownTools: tools)
+        #expect(cards.map(\.id) == ["qwen", "kimi", "pi", "claude", "perch", "local"])
+        #expect(cards[0].kind == .localAgent(.qwen))
+        #expect(cards[3].kind == .provider(.claude))
+        #expect(cards[4].kind == .contextFill(.perch))
+        #expect(cards[5].kind == .local([.codex, .gemini, .rooCode]))
+    }
+
+    @Test func movingAnAgentAcrossFifthPositionChangesItsGrouping() {
+        let tools: [AgentTool] = [.claude, .codex, .copilot, .openCode, .gemini, .perch, .pi]
+        let moved = AgentTool.moved(.pi, before: .gemini, in: tools)
+        let cards = AgentPanelEntry.make(shownTools: moved)
+        #expect(cards[4].kind == .localAgent(.pi))
+        #expect(cards[5].kind == .local([.gemini, .perch]))
+    }
+
+    @Test func upToFiveAgentsNeverProduceAnEmptyOtherAgentsCard() {
+        for count in 0...5 {
+            let tools = Array(AgentTool.allCases.prefix(count))
+            let cards = AgentPanelEntry.make(shownTools: tools)
+            #expect(cards.count == count)
+            #expect(cards.map(\.id) == tools.map(\.rawValue))
+        }
+    }
+
+    @Test func everyAgentDeclaresTheMeaningOfItsDisplayedPercentage() {
+        for tool in AgentTool.allCases {
+            if tool.account != nil {
+                #expect(tool.menuBarPercentageMeaning == .remaining)
+            } else {
+                #expect(tool.menuBarPercentageMeaning == .used)
+            }
+            #expect(tool.supportsMenuBarPercent)
+        }
+    }
+
     @Test func menuBarSelectionLimitsAgentsAndPreservesSelectionOrder() {
         #expect(
             AgentMenuBarSelection.validated(["codex", "claude", "copilot", "openCode", "perch"]) == [.codex, .claude, .copilot])
         #expect(AgentMenuBarSelection.validated([]).isEmpty)
     }
 
-    @Test func menuBarSelectionDropsDuplicatesUnknownAgentsAndTokenOnlyAgents() {
+    @Test func menuBarSelectionDropsDuplicatesUnknownAgentsAndAcceptsContextAgents() {
         #expect(
             AgentMenuBarSelection.validated(["unknown", "gemini", "codex", "codex", "pi", "perch", "claude"])
-                == [.codex, .perch, .claude])
+                == [.gemini, .codex, .pi])
     }
 
     @Test func menuBarPercentUsesTightestValidAllowanceIncludingZero() {

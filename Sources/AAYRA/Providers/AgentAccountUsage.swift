@@ -158,6 +158,99 @@ enum AgentAccountUsage {
         let accountID: String?
     }
 
+    /// Uses Gemini CLI's existing Google OAuth access token. Never refreshes or writes credentials.
+    static func gemini(now: Date = Date(), paths: AgentPaths = .init()) async -> AgentUsageStatus {
+        let file = paths.dot(".gemini").appendingPathComponent("oauth_creds.json")
+        guard let data = try? Data(contentsOf: file), data.count <= 64_000,
+            let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+            let token = root["access_token"] as? String, !token.isEmpty,
+            let expiry = AgentLocalTokens.date(root["expiry_date"]), expiry > now.addingTimeInterval(30)
+        else { return .unavailable(.gemini, "No current Gemini CLI Google sign-in; sign in again with Gemini CLI") }
+        let gate = AgentUsageThrottle.shared
+        switch await gate.admit(.gemini, now: now) {
+        case .reuse(let status): return status
+        case .throttled(let retry): return await failed(.gemini, rateLimitedUntil: retry, now: now)
+        case .request: break
+        }
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.timeoutIntervalForRequest = 10
+        configuration.timeoutIntervalForResource = 20
+        configuration.httpShouldSetCookies = false
+        configuration.urlCache = nil
+        let session = URLSession(configuration: configuration, delegate: RejectUsageRedirects(), delegateQueue: nil)
+        defer { session.invalidateAndCancel() }
+        func request(_ method: String, body: [String: Any]) throws -> URLRequest {
+            var request = URLRequest(url: URL(string: "https://cloudcode-pa.googleapis.com/v1internal:\(method)")!)
+            request.httpMethod = "POST"
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = try JSONSerialization.data(withJSONObject: body)
+            return request
+        }
+        do {
+            var project = paths.environment["GOOGLE_CLOUD_PROJECT"] ?? paths.environment["GOOGLE_CLOUD_PROJECT_ID"]
+            if project == nil {
+                let (data, response) = try await session.data(
+                    for: request("loadCodeAssist", body: ["metadata": ["ideType": "GEMINI_CLI"]]))
+                guard let response = response as? HTTPURLResponse else { throw URLError(.badServerResponse) }
+                if response.statusCode == 429 {
+                    let retry = await gate.rateLimited(
+                        .gemini, retryAfter: response.value(forHTTPHeaderField: "Retry-After"), now: now)
+                    return await failed(.gemini, rateLimitedUntil: retry, now: now)
+                }
+                if let reason = httpFailure(response.statusCode) {
+                    let status = await failed(.gemini, reason: reason, now: now)
+                    await gate.record(status)
+                    return status
+                }
+                guard data.count <= 256_000,
+                    let object = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+                else { throw URLError(.cannotParseResponse) }
+                project =
+                    object["cloudaicompanionProject"] as? String
+                    ?? (object["cloudaicompanionProject"] as? [String: Any])?["id"] as? String
+            }
+            guard let project, !project.isEmpty else {
+                let status = AgentUsageStatus.unavailable(.gemini, "Gemini sign-in did not provide a Code Assist project")
+                await gate.record(status)
+                return status
+            }
+            // fetch() applies response limits, provider pacing, 429 backoff and stale-result handling.
+            let status = await send(
+                try request("retrieveUserQuota", body: ["project": project]), kind: .gemini, now: now,
+                parse: parseGeminiQuota, facts: { _, _ in [] })
+            await gate.record(status)
+            return status
+        } catch {
+            let status = await failed(.gemini, reason: "Could not read Gemini account quota", now: now)
+            await gate.record(status)
+            return status
+        }
+    }
+
+    static func parseGeminiQuota(_ data: Data, now: Date) -> [AgentAllowance] {
+        guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+            let buckets = root["buckets"] as? [[String: Any]]
+        else { return [] }
+        var windows: [String: AgentAllowance] = [:]
+        for bucket in buckets {
+            guard let model = bucket["modelId"] as? String, !model.isEmpty,
+                let fraction = bucket["remainingFraction"] as? NSNumber,
+                CFGetTypeID(fraction) != CFBooleanGetTypeID(), fraction.doubleValue.isFinite,
+                (0...1).contains(fraction.doubleValue),
+                let reset = AgentLocalTokens.date(bucket["resetTime"]), reset > now
+            else { continue }
+            let kind = bucket["tokenType"] as? String ?? "Quota"
+            let name = "\(model) · \(kind)"
+            let value = fraction.doubleValue * 100
+            if value < (windows[name]?.remainingPercent ?? 101) {
+                windows[name] = .init(
+                    name: name, remaining: "\(Int(value.rounded()))% remaining", resetsAt: reset, remainingPercent: value)
+            }
+        }
+        return windows.values.sorted { $0.name < $1.name }
+    }
+
     static func claude(now: Date = Date()) async -> AgentUsageStatus {
         let credential: Credential?
         do {

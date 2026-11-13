@@ -41,6 +41,7 @@ enum AgentTool: String, CaseIterable, Identifiable, Sendable {
         case .codex: .codex
         case .copilot: .copilot
         case .openCode: .openCode
+        case .gemini: .gemini
         default: nil
         }
     }
@@ -127,7 +128,20 @@ enum AgentTool: String, CaseIterable, Identifiable, Sendable {
     /// True for the card that reports context fill rather than a token ledger.
     var reportsContextFill: Bool { self == .perch }
 
-    var supportsMenuBarPercent: Bool { account != nil || reportsContextFill }
+    enum PercentageMeaning {
+        case remaining, used
+    }
+
+    /// Describes the percentage we display, after converting any provider-reported usage to allowance left.
+    /// Keep this exhaustive so every newly supported agent must declare its percentage meaning.
+    var menuBarPercentageMeaning: PercentageMeaning? {
+        switch self {
+        case .claude, .codex, .copilot, .openCode, .gemini: .remaining
+        case .perch, .qwen, .cline, .rooCode, .kiloCode, .kimi, .pi, .ohMyPi, .cherryStudio, .zcode: .used
+        }
+    }
+
+    var supportsMenuBarPercent: Bool { menuBarPercentageMeaning != nil }
 
     /// Compact labels for every supported agent, independent of which agents this Mac has installed.
     var menuBarName: String {

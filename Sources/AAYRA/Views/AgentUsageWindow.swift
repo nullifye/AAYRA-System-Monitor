@@ -24,6 +24,7 @@ final class AgentUsageMonitor {
     private var pendingPanelRefresh = false
     private(set) var localTokens: [AgentTool: AgentTokenUsage] = [:]
     private(set) var localTokensChecked = false
+    private(set) var contextReadings: [AgentTool: AgentContextReading] = [:]
     /// Perch CLI thread context snapshots, newest first. Read from disk; costs no tokens.
     private(set) var perchThreads: [PerchThreadContext] = []
     private(set) var perchChecked = false
@@ -88,6 +89,7 @@ final class AgentUsageMonitor {
         // Unticked agents are skipped entirely: no files scanned, no sign-in read, no request sent.
         let shown = Set(menuBarOnly ? menuBarTools : shownTools)
         let kinds = shown.compactMap(\.account)
+        let contextTask = Task.detached(priority: .utility) { AgentContextUsage.read(for: shown) }
         if !menuBarOnly {
             localTokensChecked = false
             localTokens = [:]
@@ -123,6 +125,8 @@ final class AgentUsageMonitor {
                 }
             }.value
             self?.statuses.merge(fresh) { _, new in new }
+            let context = await contextTask.value
+            self?.contextReadings.merge(context) { _, new in new }
             self?.isRefreshing = false
             if let self, self.pendingPanelRefresh {
                 self.pendingPanelRefresh = false
@@ -160,6 +164,7 @@ final class AgentUsageMonitor {
         case .claude: await AgentAccountUsage.claude()
         case .codex: await AgentAccountUsage.codex()
         case .copilot: await AgentAccountUsage.copilot()
+        case .gemini: await AgentAccountUsage.gemini()
         case .openCode:
             if let go = await AgentAccountUsage.openCodeGo() { go } else { AgentUsageProvider.openCode() }
         }
@@ -190,12 +195,12 @@ final class AgentUsageWindow: NSObject {
         monitor.refresh(menuBarOnly: true)
     }
 
-    var menuBarEntries: [(name: String, percent: Double?)] {
+    var menuBarEntries: [AgentMenuBarText.Entry] {
         monitor.menuBarTools.map { tool in
             let percent =
                 tool.account.flatMap { monitor.status(for: $0).menuBarRemainingPercent }
-                ?? (tool.reportsContextFill ? monitor.perchThreads.first?.percent : nil)
-            return (name: tool.menuBarName, percent: percent)
+                ?? (tool.reportsContextFill ? monitor.perchThreads.first?.percent : monitor.contextReadings[tool]?.percent)
+            return .init(name: tool.menuBarName, percent: percent, reportsUsage: tool.menuBarPercentageMeaning == .used)
         }
     }
 
@@ -206,6 +211,13 @@ final class AgentUsageWindow: NSObject {
             }
             if tool.reportsContextFill, let percent = monitor.perchThreads.first?.percent {
                 return "\(tool.name): \(Int(percent.rounded())) percent context used"
+            }
+            if tool.readsLocalContext, let reading = monitor.contextReadings[tool] {
+                if let percent = reading.percent {
+                    let checked = reading.observedAt.map { " · \($0.formatted(date: .omitted, time: .shortened))" } ?? ""
+                    return "\(tool.name): \(Int(percent.rounded())) percent context used · \(reading.detail)\(checked)"
+                }
+                return "\(tool.name): percentage unavailable · \(reading.detail)"
             }
             return "\(tool.name): percentage unavailable"
         }.joined(separator: ", ")
@@ -328,17 +340,29 @@ final class AgentUsageWindow: NSObject {
     }
 }
 
-/// One card in the agent panel, after grouping the token-only agents.
-private struct AgentPanelEntry: Identifiable {
-    enum Kind {
+/// The first five shown agents have individual cards; the rest share one card in the same order.
+struct AgentPanelEntry: Identifiable {
+    enum Kind: Equatable {
         case provider(AgentTool)
         case local([AgentTool])
+        case localAgent(AgentTool)
         /// An agent that reports context fill rather than a token ledger.
         case contextFill(AgentTool)
     }
 
     let id: String
     let kind: Kind
+
+    static func make(shownTools: [AgentTool]) -> [Self] {
+        var result = shownTools.prefix(5).map { tool in
+            Self(
+                id: tool.rawValue,
+                kind: tool.reportsContextFill ? .contextFill(tool) : tool.account != nil ? .provider(tool) : .localAgent(tool))
+        }
+        let others = Array(shownTools.dropFirst(5))
+        if !others.isEmpty { result.append(.init(id: "local", kind: .local(others))) }
+        return result
+    }
 }
 
 private struct AgentUsageView: View {
@@ -414,9 +438,14 @@ private struct AgentUsageView: View {
                             }
                         }
                     case .local(let tools):
-                        AgentLocalCard(tools: tools, tokens: monitor.localTokens, checked: monitor.localTokensChecked)
+                        AgentLocalCard(tools: tools, monitor: monitor)
                             .detailPopover(.otherAgents, selection: $openDetail, edge: detailEdge, tint: .gray) {
                                 OtherAgentsDetail(tools: tools, monitor: monitor)
+                            }
+                    case .localAgent(let tool):
+                        AgentIndividualContextCard(tool: tool, monitor: monitor)
+                            .detailPopover(.agent(tool), selection: $openDetail, edge: detailEdge, tint: tool.tint) {
+                                AgentDetail(tool: tool, monitor: monitor)
                             }
                     case .contextFill(let tool):
                         ContextFillCard(
@@ -438,27 +467,8 @@ private struct AgentUsageView: View {
         }
     }
 
-    /// Cards in the user's order: account agents individually, the token-only agents as one combined
-    /// card where the first of them appears, and context-fill agents at their own positions.
     private var entries: [AgentPanelEntry] {
-        var result: [AgentPanelEntry] = []
-        var local: [AgentTool] = []
-        var localIndex: Int?
-        for tool in monitor.shownTools {
-            if tool.reportsContextFill {
-                result.append(.init(id: tool.rawValue, kind: .contextFill(tool)))
-            } else if tool.account != nil {
-                result.append(.init(id: tool.rawValue, kind: .provider(tool)))
-            } else {
-                if localIndex == nil {
-                    localIndex = result.count
-                    result.append(.init(id: "local", kind: .local([])))
-                }
-                local.append(tool)
-            }
-        }
-        if let localIndex { result[localIndex] = .init(id: "local", kind: .local(local)) }
-        return result
+        AgentPanelEntry.make(shownTools: monitor.shownTools)
     }
 
     /// One line like the hardware panel's header: title, then the gear (choose agents) and Refresh.
@@ -658,7 +668,7 @@ private struct AgentChooser: View {
                     .opacity(found ? 1 : 0.5)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(tool.name).font(.body)
-                    Text(detail(tool, found: found))
+                    Text(detail(tool))
                         .font(.callout).foregroundStyle(.secondary)
                 }
                 Spacer(minLength: 8)
@@ -699,16 +709,18 @@ private struct AgentChooser: View {
         }
     }
 
-    private func detail(_ tool: AgentTool, found: Bool) -> String {
+    private func detail(_ tool: AgentTool) -> String {
         let kind: String
         if tool.reportsContextFill {
             kind = "Context fill (local snapshots)"
         } else if tool.account != nil {
             kind = "Account limits + local tokens"
+        } else if tool.readsLocalContext {
+            kind = "Context usage + local tokens"
         } else {
             kind = "Local tokens"
         }
-        return found ? kind : kind + " · Not found on this Mac"
+        return kind
     }
 
     private var options: some View {
@@ -741,24 +753,68 @@ private struct AgentChooser: View {
     }
 }
 
-/// Agents without an account allowance, as one `Card` whose headline is today's combined local tokens.
-private struct AgentLocalCard: View {
-    let tools: [AgentTool]
-    let tokens: [AgentTool: AgentTokenUsage]
-    let checked: Bool
+/// A context/token agent promoted into the first five positions.
+private struct AgentIndividualContextCard: View {
+    let tool: AgentTool
+    let monitor: AgentUsageMonitor
 
     var body: some View {
-        let total = tools.compactMap { tokens[$0]?.total }.reduce(0, +)
+        let reading = monitor.contextReadings[tool]
+        Card {
+            AgentToolIcon(tool: tool)
+        } header: {
+            MeterHeader(title: tool.name, value: reading?.percent.map { "\(Int($0.rounded()))%" } ?? "—", suffix: "context")
+        } details: {
+            if let percent = reading?.percent {
+                StackedBar(
+                    segments: [.init(value: percent / 100, color: percent >= 90 ? .red : percent >= 70 ? .orange : tool.tint)],
+                    height: 8)
+            }
+            Stat(label: "Today", value: AgentUsageStyle.tokens(monitor.localTokens[tool], checked: monitor.localTokensChecked))
+            if let reading { Text(reading.detail).truncationMode(.tail) }
+        }
+    }
+}
+
+/// Sixth and later agents, including account and context agents, in one compact card.
+private struct AgentLocalCard: View {
+    let tools: [AgentTool]
+    let monitor: AgentUsageMonitor
+
+    var body: some View {
+        let total = tools.compactMap { monitor.localTokens[$0]?.total }.reduce(0, +)
         Card(symbol: "square.stack.3d.up.fill", tint: .gray) {
             MeterHeader(
-                title: "Other Agents", value: checked ? total.formatted() : "…",
+                title: "Other Agents", value: monitor.localTokensChecked ? total.formatted() : "…",
                 suffix: "today")
         } details: {
             ForEach(tools) { tool in
                 HStack(spacing: 6) {
                     AgentToolIcon(tool: tool, size: 16)
-                    Stat(label: tool.name, value: AgentUsageStyle.tokens(tokens[tool], checked: checked))
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(tool.name).foregroundStyle(.primary)
+                        if !tool.reportsContextFill {
+                            Text(
+                                "\(AgentUsageStyle.tokens(monitor.localTokens[tool], checked: monitor.localTokensChecked)) tokens today"
+                            )
+                            .font(.caption)
+                        }
+                    }
                     Spacer(minLength: 0)
+                    let percent =
+                        tool.account.flatMap { monitor.status(for: $0).menuBarRemainingPercent }
+                        ?? (tool.reportsContextFill
+                            ? monitor.perchThreads.first?.percent : monitor.contextReadings[tool]?.percent)
+                    let usesContext = tool.menuBarPercentageMeaning == .used
+                    if let percent {
+                        let isCritical = usesContext ? percent >= 90 : percent <= 10
+                        let isWarning = usesContext ? percent >= 70 : percent <= 30
+                        Text("\(Int(percent.rounded()))% \(usesContext ? "context" : "left")")
+                            .monospacedDigit()
+                            .foregroundStyle(isCritical ? Color.red : isWarning ? Color.orange : Color.secondary)
+                    } else {
+                        Text("—").foregroundStyle(.secondary)
+                    }
                 }
                 .help(tool.dataHint)
             }
@@ -787,6 +843,19 @@ private struct AgentDetail: View {
         } trailing: {
             TokenTypeBreakdown(usage: usage, checked: monitor.localTokensChecked)
             if let status { AccountDetail(status: status) }
+            if tool.readsLocalContext {
+                DetailSection("Context Usage") {
+                    if let reading = monitor.contextReadings[tool] {
+                        DetailRow("Used", reading.percent.map { "\(Int($0.rounded()))%" } ?? "Unavailable")
+                        if let used = reading.used { DetailRow("Context tokens", used.formatted()) }
+                        if let capacity = reading.capacity { DetailRow("Window capacity", capacity.formatted()) }
+                        if let model = reading.model { DetailRow("Model", model) }
+                        Text(reading.detail).font(.callout).foregroundStyle(.secondary)
+                    } else {
+                        EmptyRow(text: "Checking context…")
+                    }
+                }
+            }
         }
     }
 
@@ -936,9 +1005,35 @@ private struct OtherAgentsDetail: View {
         }
     }
 
-    private func section(_ tool: AgentTool) -> some View {
-        ModelBreakdown(
-            title: tool.name, usage: monitor.localTokens[tool], tint: tool.tint, checked: monitor.localTokensChecked)
+    @ViewBuilder private func section(_ tool: AgentTool) -> some View {
+        if tool.reportsContextFill {
+            DetailSection("\(tool.name) Context") {
+                if let thread = monitor.perchThreads.first {
+                    DetailRow("Used", "\(Int(thread.percent.rounded()))%")
+                    DetailRow("Context tokens", thread.usedTokens.formatted())
+                    DetailRow("Window capacity", thread.limitTokens.formatted())
+                } else {
+                    EmptyRow(text: "No context reading available")
+                }
+            }
+        } else {
+            ModelBreakdown(
+                title: tool.name, usage: monitor.localTokens[tool], tint: tool.tint, checked: monitor.localTokensChecked)
+        }
+        if let kind = tool.account {
+            AccountDetail(status: monitor.status(for: kind), title: "\(tool.name) Account")
+        }
+        if let reading = monitor.contextReadings[tool] {
+            DetailSection("\(tool.name) Context") {
+                DetailRow("Used", reading.percent.map { "\(Int($0.rounded()))%" } ?? "Unavailable")
+                if let used = reading.used { DetailRow("Context tokens", used.formatted()) }
+                if let capacity = reading.capacity { DetailRow("Window capacity", capacity.formatted()) }
+                if let checked = reading.observedAt {
+                    DetailRow("Observed", checked.formatted(date: .abbreviated, time: .shortened))
+                }
+                Text(reading.detail).font(.callout).foregroundStyle(.secondary)
+            }
+        }
     }
 }
 
@@ -1057,9 +1152,10 @@ private struct TokenTypeBreakdown: View {
 /// The account's limits with exact reset times, and how fresh they are.
 private struct AccountDetail: View {
     let status: AgentUsageStatus
+    var title = "Account"
 
     var body: some View {
-        DetailSection("Account") {
+        DetailSection(title) {
             ForEach(status.allowances) { window in
                 DetailRow(window.name, "\(AgentUsageStyle.left(window)) left")
                 DetailRow("Resets", window.resetsAt.formatted(date: .abbreviated, time: .shortened))
@@ -1120,6 +1216,7 @@ extension AgentUsageStatus.Kind {
         case .codex: address = "https://chatgpt.com/codex/settings/usage"
         case .copilot: address = "https://github.com/settings/billing"
         case .openCode: return nil
+        case .gemini: address = "https://geminicli.com/docs/quota-and-pricing/"
         }
         return URL(string: address)
     }

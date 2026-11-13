@@ -29,6 +29,7 @@ struct AgentUsageStatus: Equatable, Identifiable, Sendable {
         case codex = "Codex"
         case copilot = "GitHub Copilot"
         case openCode = "OpenCode"
+        case gemini = "Gemini CLI"
     }
     let kind: Kind
     let allowances: [AgentAllowance]

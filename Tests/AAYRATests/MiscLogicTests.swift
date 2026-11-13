@@ -66,24 +66,74 @@ struct ShortcutTests {
 @MainActor
 struct StatusItemLabelTests {
     @Test func agentPercentColorsUseWarningBoundaries() {
-        #expect(AgentMenuBarText.percentageColor(0) == .systemRed)
-        #expect(AgentMenuBarText.percentageColor(10) == .systemRed)
-        #expect(AgentMenuBarText.percentageColor(10.01) == .systemOrange)
-        #expect(AgentMenuBarText.percentageColor(30) == .systemOrange)
-        #expect(AgentMenuBarText.percentageColor(30.01) == .labelColor)
+        #expect(AgentMenuBarText.percentageColor(0) == AgentMenuBarText.criticalColor)
+        #expect(AgentMenuBarText.percentageColor(10) == AgentMenuBarText.criticalColor)
+        #expect(AgentMenuBarText.percentageColor(10.01) == AgentMenuBarText.warningColor)
+        #expect(AgentMenuBarText.percentageColor(30) == AgentMenuBarText.warningColor)
+        #expect(AgentMenuBarText.percentageColor(30.01) == .white)
     }
 
     @Test func agentMenuBarColorsOnlyPercentagesAndKeepsShortNames() {
         let title = AgentMenuBarText.make([
-            (AgentTool.claude.menuBarName, 10), (AgentTool.codex.menuBarName, 30), ("Copilot", nil),
+            .init(name: AgentTool.claude.menuBarName, percent: 10),
+            .init(name: AgentTool.codex.menuBarName, percent: 30), .init(name: "Copilot", percent: nil),
         ])
         #expect(title.string == "Claude 10% · Codex 30% · Copilot —")
         let string = title.string as NSString
-        for (text, color) in [("Claude", NSColor.labelColor), ("10%", .systemRed), ("30%", .systemOrange), ("—", .labelColor)] {
+        for (text, color) in [
+            ("Claude", NSColor.labelColor), ("10%", AgentMenuBarText.criticalColor),
+            ("30%", AgentMenuBarText.warningColor), ("—", .white),
+        ] {
             let actual = title.attribute(.foregroundColor, at: string.range(of: text).location, effectiveRange: nil) as? NSColor
             #expect(actual == color)
         }
         #expect(AgentMenuBarText.make([]).length == 0)
+    }
+
+    @Test func contextUsageWarnsAtHighPercentages() {
+        for (percent, expected) in [
+            (0.0, NSColor.white), (10, .white), (69.99, .white),
+            (70, AgentMenuBarText.warningColor), (89.99, AgentMenuBarText.warningColor),
+            (90, AgentMenuBarText.criticalColor), (100, AgentMenuBarText.criticalColor),
+        ] {
+            let entry = AgentMenuBarText.Entry(name: "Perch", percent: percent, reportsUsage: true)
+            #expect(entry.color == expected)
+            let title = AgentMenuBarText.make([entry])
+            let actual = title.attribute(.foregroundColor, at: 6, effectiveRange: nil) as? NSColor
+            #expect(actual == expected)
+        }
+        #expect(AgentMenuBarText.Entry(name: "Perch", percent: nil, reportsUsage: true).color == .white)
+    }
+
+    @Test func agentWarningColorsHaveReadableContrastInBothAppearances() throws {
+        func luminance(_ color: NSColor) throws -> Double {
+            let rgb = try #require(color.usingColorSpace(.sRGB))
+            func linear(_ value: CGFloat) -> Double {
+                let value = Double(value)
+                return value <= 0.04045 ? value / 12.92 : pow((value + 0.055) / 1.055, 2.4)
+            }
+            return 0.2126 * linear(rgb.redComponent) + 0.7152 * linear(rgb.greenComponent) + 0.0722 * linear(rgb.blueComponent)
+        }
+        for name in [NSAppearance.Name.aqua, .darkAqua] {
+            let appearance = try #require(NSAppearance(named: name))
+            var resolved: [NSColor] = []
+            appearance.performAsCurrentDrawingAppearance {
+                resolved = [AgentMenuBarText.warningColor, AgentMenuBarText.criticalColor].compactMap {
+                    $0.usingColorSpace(.sRGB)
+                }
+            }
+            #expect(resolved.count == 2)
+            let background = name == .darkAqua ? NSColor(srgbRed: 0.11, green: 0.11, blue: 0.12, alpha: 1) : .white
+            let backgroundLuminance = try luminance(background)
+            for color in resolved {
+                #expect(color.alphaComponent == 1)
+                let foregroundLuminance = try luminance(color)
+                let contrast =
+                    (max(foregroundLuminance, backgroundLuminance) + 0.05)
+                    / (min(foregroundLuminance, backgroundLuminance) + 0.05)
+                #expect(contrast >= 4.5)
+            }
+        }
     }
 
     @Test func cpuLabelHasConstantWidthFromOneToThreeDigits() {

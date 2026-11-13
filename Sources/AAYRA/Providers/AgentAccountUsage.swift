@@ -238,7 +238,8 @@ enum AgentAccountUsage {
                 let fraction = bucket["remainingFraction"] as? NSNumber,
                 CFGetTypeID(fraction) != CFBooleanGetTypeID(), fraction.doubleValue.isFinite,
                 (0...1).contains(fraction.doubleValue),
-                let reset = AgentLocalTokens.date(bucket["resetTime"]), reset > now
+                let reset = AgentLocalTokens.date(bucket["resetTime"]), reset > now,
+                reset < now.addingTimeInterval(35 * 86_400)
             else { continue }
             let kind = bucket["tokenType"] as? String ?? "Quota"
             let name = "\(model) · \(kind)"
@@ -538,15 +539,14 @@ enum AgentAccountUsage {
             for key in ["primary_window", "secondary_window"] {
                 guard let window = limits[key] as? [String: Any],
                     let used = number(window["used_percent"]),
-                    let seconds = number(window["reset_at"]),
-                    let limit = allowance(name: feature, used: used, reset: Date(timeIntervalSince1970: seconds), now: now)
+                    let limit = allowance(
+                        name: feature, used: used, reset: AgentLocalTokens.date(window["reset_at"]), now: now)
                 else { continue }
                 let length = number(window["limit_window_seconds"]).map { windowName(seconds: $0) }
                 facts.append(
                     .init(
                         label: [planName(feature), length].compactMap { $0 }.joined(separator: " · "),
-                        value: "\(Int((limit.remainingPercent ?? 0).rounded()))% left · resets "
-                            + limit.resetsAt.formatted(date: .abbreviated, time: .shortened)))
+                        value: "\(Int((limit.remainingPercent ?? 0).rounded()))% left · resets \(limit.resetDescription)"))
             }
         }
         return facts
@@ -593,10 +593,9 @@ enum AgentAccountUsage {
         else { return [] }
         return [("primary_window", "5-hour"), ("secondary_window", "Weekly")].compactMap { key, name in
             guard let window = limits[key] as? [String: Any],
-                let used = (window["used_percent"] as? NSNumber)?.doubleValue,
-                let seconds = (window["reset_at"] as? NSNumber)?.doubleValue
+                let used = (window["used_percent"] as? NSNumber)?.doubleValue
             else { return nil }
-            return allowance(name: name, used: used, reset: Date(timeIntervalSince1970: seconds), now: now)
+            return allowance(name: name, used: used, reset: AgentLocalTokens.date(window["reset_at"]), now: now)
         }
     }
 
@@ -619,9 +618,11 @@ enum AgentAccountUsage {
 
     static func parseCopilot(_ data: Data, now: Date) -> [AgentAllowance] {
         guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-            let resetText = root["quota_reset_date"] as? String,
-            let reset = isoDate(resetText) ?? dateOnly(resetText),
-            reset > now, reset < now.addingTimeInterval(35 * 86_400)
+            let resetText = root["quota_reset_date"] as? String
+        else { return [] }
+        // The quota date is usually a calendar day, occasionally a full timestamp.
+        let instant = isoDate(resetText)
+        guard let reset = instant ?? dateOnly(resetText), reset > now, reset < now.addingTimeInterval(35 * 86_400)
         else { return [] }
         let snapshots = root["quota_snapshots"] as? [String: Any] ?? [:]
         let monthly = root["monthly_quotas"] as? [String: Any] ?? [:]
@@ -644,7 +645,7 @@ enum AgentAccountUsage {
             guard let verified, verified.isFinite, (0...100).contains(verified) else { return nil }
             return AgentAllowance(
                 name: name, remaining: "\(Int(verified.rounded()))% remaining", resetsAt: reset,
-                remainingPercent: verified)
+                resetsAtIsDateOnly: instant == nil, remainingPercent: verified)
         }
     }
 
@@ -660,10 +661,14 @@ enum AgentAccountUsage {
         return fractional.date(from: text) ?? ISO8601DateFormatter().date(from: text)
     }
 
+    /// "2027-01-20" names a calendar day, not an instant. Build that day at *local* midnight: parsing it as
+    /// UTC midnight would show the previous day anywhere west of Greenwich (and a made-up time everywhere).
     private static func dateOnly(_ text: String) -> Date? {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withFullDate]
-        return formatter.date(from: text)
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = .current
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter.date(from: String(text.prefix(10)))
     }
 
     private static func allowance(name: String, used: Double, reset: Date?, now: Date) -> AgentAllowance? {

@@ -4,15 +4,37 @@ struct AgentAllowance: Equatable, Identifiable, Codable, Sendable {
     let name: String
     let remaining: String
     let resetsAt: Date
+    /// True when the provider reported a calendar date ("2027-01-20") rather than an instant. The reset is
+    /// then shown as that day, without inventing a time of day; the stored instant is local midnight.
+    var resetsAtIsDateOnly = false
     /// A server-reported allowance (or a percentage derived from its reported counts), never local token spend.
     let remainingPercent: Double?
     var id: String { name }
 
-    init(name: String, remaining: String, resetsAt: Date, remainingPercent: Double? = nil) {
+    /// The reset as literally reported: a day for date-only resets, a day and time otherwise.
+    var resetDescription: String {
+        resetsAt.formatted(date: .abbreviated, time: resetsAtIsDateOnly ? .omitted : .shortened)
+    }
+
+    init(
+        name: String, remaining: String, resetsAt: Date, resetsAtIsDateOnly: Bool = false,
+        remainingPercent: Double? = nil
+    ) {
         self.name = name
         self.remaining = remaining
         self.resetsAt = resetsAt
+        self.resetsAtIsDateOnly = resetsAtIsDateOnly
         self.remainingPercent = remainingPercent
+    }
+
+    // Cached allowances from a previous build have no `resetsAtIsDateOnly`; treat them as instants.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        name = try container.decode(String.self, forKey: .name)
+        remaining = try container.decode(String.self, forKey: .remaining)
+        resetsAt = try container.decode(Date.self, forKey: .resetsAt)
+        resetsAtIsDateOnly = try container.decodeIfPresent(Bool.self, forKey: .resetsAtIsDateOnly) ?? false
+        remainingPercent = try container.decodeIfPresent(Double.self, forKey: .remainingPercent)
     }
 }
 
@@ -96,13 +118,13 @@ enum AgentUsageProvider {
                 guard let meter = limits[key] as? [String: Any],
                     let used = (meter["used_percent"] as? NSNumber)?.doubleValue, used.isFinite, (0...100).contains(used),
                     let minutes = (meter["window_minutes"] as? NSNumber)?.intValue, minutes > 0,
-                    let reset = (meter["resets_at"] as? NSNumber)?.doubleValue,
-                    reset > now.timeIntervalSince1970, reset < now.timeIntervalSince1970 + 35 * 86_400
+                    let reset = AgentLocalTokens.date(meter["resets_at"]),
+                    reset > now, reset < now.addingTimeInterval(35 * 86_400)
                 else { return nil }
                 let label = minutes == 300 ? "5-hour" : minutes == 10_080 ? "Weekly" : "\(minutes)-minute"
                 return .init(
                     name: label, remaining: "\(Int((100 - used).rounded()))% remaining",
-                    resetsAt: Date(timeIntervalSince1970: reset), remainingPercent: 100 - used)
+                    resetsAt: reset, remainingPercent: 100 - used)
             }
             if !windows.isEmpty { return windows }
         }
@@ -148,27 +170,25 @@ enum AgentUsageProvider {
             for (key, label) in [("rolling", "Rolling"), ("weekly", "Weekly"), ("monthly", "Monthly")] {
                 guard let meter = go[key] as? [String: Any], meter["limited"] as? Bool == true,
                     let used = (meter["percent"] as? NSNumber)?.doubleValue, used.isFinite, (0...100).contains(used),
-                    let reset = (meter["resetsAt"] as? NSNumber)?.doubleValue,
-                    reset / 1000 > now.timeIntervalSince1970
+                    let reset = AgentLocalTokens.date(meter["resetsAt"]), reset > now
                 else { continue }
                 result.append(
                     .init(
                         name: label, remaining: "\(Int((100 - used).rounded()))% remaining",
-                        resetsAt: Date(timeIntervalSince1970: reset / 1000), remainingPercent: 100 - used))
+                        resetsAt: reset, remainingPercent: 100 - used))
             }
         }
         if let budgets = account["budgets"] as? [[String: Any]] {
             for budget in budgets {
                 guard let limit = (budget["limit"] as? NSNumber)?.doubleValue, limit > 0,
                     let spent = (budget["spent"] as? NSNumber)?.doubleValue, spent.isFinite,
-                    let reset = (budget["resetsAt"] as? NSNumber)?.doubleValue,
-                    reset / 1000 > now.timeIntervalSince1970
+                    let reset = AgentLocalTokens.date(budget["resetsAt"]), reset > now
                 else { continue }
                 let name = budget["id"] as? String ?? "Budget"
                 result.append(
                     .init(
                         name: name, remaining: String(format: "$%.2f of $%.2f remaining", max(0, limit - spent), limit),
-                        resetsAt: Date(timeIntervalSince1970: reset / 1000),
+                        resetsAt: reset,
                         remainingPercent: min(100, max(0, (limit - spent) / limit * 100))))
             }
         }

@@ -96,6 +96,38 @@ struct AgentUsageTests {
         #expect(AgentUsageProvider.parseCodex(Data(text.utf8), now: now).isEmpty)
     }
 
+    @Test func codexAcceptsResetTimestampsInSecondsOrMilliseconds() {
+        let observed = ISO8601DateFormatter().string(from: now)
+        func parse(_ reset: String) -> [AgentAllowance] {
+            let text = """
+                {"type":"event_msg","timestamp":"\(observed)","payload":{"type":"token_count","rate_limits":{"primary":{"used_percent":10,"window_minutes":300,"resets_at":\(reset)}}}}
+                """
+            return AgentUsageProvider.parseCodex(Data(text.utf8), now: now)
+        }
+        let seconds = parse("1800003600")
+        let milliseconds = parse("1800003600000")
+        #expect(seconds.count == 1)
+        #expect(milliseconds.map(\.resetsAt) == seconds.map(\.resetsAt))
+        #expect(seconds.first?.resetsAt == Date(timeIntervalSince1970: 1_800_003_600))
+    }
+
+    @Test func liveCodexAndOpenCodeAcceptEpochsInEitherUnit() {
+        func codex(_ reset: String) -> [AgentAllowance] {
+            AgentAccountUsage.parseCodexUsage(
+                Data("{\"rate_limit\":{\"primary_window\":{\"used_percent\":20,\"reset_at\":\(reset)}}}".utf8),
+                now: now)
+        }
+        #expect(codex("1800003600").map(\.resetsAt) == codex("1800003600000").map(\.resetsAt))
+        #expect(codex("1800003600").first?.resetsAt == Date(timeIntervalSince1970: 1_800_003_600))
+
+        let openCode = """
+            {"data":{"go":{"rolling":{"percent":30,"limited":true,"resetsAt":1800003600}}}}
+            """
+        #expect(
+            AgentUsageProvider.parseOpenCode(Data(openCode.utf8), now: now).first?.resetsAt
+                == Date(timeIntervalSince1970: 1_800_003_600))
+    }
+
     @Test func openCodeDistinguishesLimitsAndMissingAccount() {
         #expect(AgentUsageProvider.parseOpenCode(Data("{\"data\":null}".utf8), now: now).isEmpty)
         let text = """
@@ -159,6 +191,33 @@ struct AgentUsageTests {
         #expect(windows.map(\.name) == ["Premium", "Chat"])
         #expect(windows.map(\.remaining) == ["30% remaining", "80% remaining"])
         #expect(AgentAccountUsage.parseCopilot(Data("{\"tokens\":1000}".utf8), now: now).isEmpty)
+    }
+
+    @Test func copilotDayOnlyResetIsTheNamedLocalDayNotUTCMidnight() throws {
+        let payload = """
+            {"quota_reset_date":"2027-01-20","quota_snapshots":{"premium_interactions":{"entitlement":100,"remaining":30}}}
+            """
+        let window = try #require(AgentAccountUsage.parseCopilot(Data(payload.utf8), now: now).first)
+        #expect(window.resetsAtIsDateOnly)
+        // Local midnight on the 20th, so the panel can never show the 19th west of Greenwich.
+        #expect(window.resetsAt == Calendar.current.date(from: DateComponents(year: 2027, month: 1, day: 20)))
+    }
+
+    @Test func copilotFullTimestampResetKeepsItsTime() throws {
+        let payload = """
+            {"quota_reset_date":"2027-01-20T09:30:00Z","quota_snapshots":{"chat":{"percent_remaining":80}}}
+            """
+        let window = try #require(AgentAccountUsage.parseCopilot(Data(payload.utf8), now: now).first)
+        #expect(!window.resetsAtIsDateOnly)
+        #expect(window.resetsAt == Date(timeIntervalSince1970: 1_800_437_400))
+    }
+
+    @Test func cachedAllowancesWithoutTheDayFlagStillDecode() throws {
+        let json = Data(
+            #"{"name":"Weekly","remaining":"70% remaining","resetsAt":1800003600,"remainingPercent":70}"#.utf8)
+        let allowance = try JSONDecoder().decode(AgentAllowance.self, from: json)
+        #expect(!allowance.resetsAtIsDateOnly)
+        #expect(allowance.remainingPercent == 70)
     }
 
     @Test func panelOnlyScrollsWhenContentExceedsDisplay() {

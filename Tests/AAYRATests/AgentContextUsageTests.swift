@@ -128,6 +128,7 @@ struct AgentContextUsageTests {
                 {"modelId":"gemini-flash","remainingFraction":0,"remainingAmount":"0","resetTime":1800003600},
                 {"modelId":"expired","remainingFraction":0.5,"resetTime":1700000000},
                 {"modelId":"invalid","remainingFraction":1.5,"resetTime":1800003600},
+                {"modelId":"far-future","remainingFraction":0.9,"resetTime":1803459600},
                 {"modelId":"boolean","remainingFraction":true,"resetTime":1800003600}]}
                 """), now: now)
         #expect(result.count == 2)

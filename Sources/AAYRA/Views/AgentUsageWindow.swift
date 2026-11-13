@@ -560,7 +560,7 @@ private struct AgentProviderCard: View {
                 HStack(spacing: 10) {
                     Stat(label: window.name, value: AgentUsageStyle.left(window) + " left")
                     Spacer(minLength: 0)
-                    Text("Resets in \(AgentUsageStyle.untilReset(window.resetsAt))")
+                    Text(AgentUsageStyle.reset(window))
                 }
             }
             HStack(spacing: 10) {
@@ -597,6 +597,14 @@ private enum AgentUsageStyle {
         if seconds < 3_600 { return "\(max(1, Int((seconds / 60).rounded(.up))))m" }
         if seconds < 86_400 { return "\(Int((seconds / 3_600).rounded()))h" }
         return "\(Int((seconds / 86_400).rounded()))d"
+    }
+
+    /// "Resets in 3d", or the day itself when the provider reported a date rather than an instant: a
+    /// countdown would invent hours the server never gave.
+    static func reset(_ allowance: AgentAllowance, now: Date = Date()) -> String {
+        allowance.resetsAtIsDateOnly
+            ? "Resets \(allowance.resetsAt.formatted(.dateTime.month(.abbreviated).day()))"
+            : "Resets in \(untilReset(allowance.resetsAt, now: now))"
     }
 
     /// The full count, e.g. "227,312,345".
@@ -1158,7 +1166,7 @@ private struct AccountDetail: View {
         DetailSection(title) {
             ForEach(status.allowances) { window in
                 DetailRow(window.name, "\(AgentUsageStyle.left(window)) left")
-                DetailRow("Resets", window.resetsAt.formatted(date: .abbreviated, time: .shortened))
+                DetailRow("Resets", window.resetDescription)
             }
             // Plan, credits and request counts: account details that aren't resetting allowances.
             ForEach(status.facts) { fact in

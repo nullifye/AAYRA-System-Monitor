@@ -190,14 +190,13 @@ final class AgentUsageWindow: NSObject {
         monitor.refresh(menuBarOnly: true)
     }
 
-    var menuBarTitle: NSAttributedString {
-        AgentMenuBarText.make(
-            monitor.menuBarTools.map { tool in
-                let percent =
-                    tool.account.flatMap { monitor.status(for: $0).menuBarRemainingPercent }
-                    ?? (tool.reportsContextFill ? monitor.perchThreads.first?.percent : nil)
-                return (name: tool.menuBarName, percent: percent)
-            })
+    var menuBarEntries: [(name: String, percent: Double?)] {
+        monitor.menuBarTools.map { tool in
+            let percent =
+                tool.account.flatMap { monitor.status(for: $0).menuBarRemainingPercent }
+                ?? (tool.reportsContextFill ? monitor.perchThreads.first?.percent : nil)
+            return (name: tool.menuBarName, percent: percent)
+        }
     }
 
     var menuBarAccessibilityLabel: String {

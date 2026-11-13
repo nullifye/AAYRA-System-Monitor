@@ -46,6 +46,8 @@ final class StatusItemController: NSObject {
     /// Optional second menu bar item with live network speed (Settings → Menu Bar).
     private var networkItem: NSStatusItem?
     private var agentItem: NSStatusItem?
+    private var lastAgentTitle: NSAttributedString?
+    private var lastAgentAppearance: String?
     private let agentWindow = AgentUsageWindow()
     /// System-wide shortcut that toggles the panel (Settings → General).
     private var hotKey: GlobalHotKey?
@@ -198,6 +200,8 @@ final class StatusItemController: NSObject {
                 agentWindow.close()
                 NSStatusBar.system.removeStatusItem(item)
                 agentItem = nil
+                lastAgentTitle = nil
+                lastAgentAppearance = nil
             }
             return
         }
@@ -214,24 +218,30 @@ final class StatusItemController: NSObject {
         }
         agentWindow.updateMenuBarMonitoring()
         guard let item = agentItem, let button = item.button else { return }
-        let title = agentWindow.menuBarTitle
+        let entries = agentWindow.menuBarEntries
+        let title = AgentMenuBarText.make(entries)
         if title.length == 0 {
-            if button.image == nil {
+            if button.image == nil || lastAgentTitle != nil {
                 let icon = NSImage(systemSymbolName: "sparkles", accessibilityDescription: "Agent Usage")
                 icon?.isTemplate = true
                 button.image = icon
                 button.title = ""
                 button.imagePosition = .imageOnly
                 item.length = NSStatusItem.squareLength
+                lastAgentTitle = nil
+                lastAgentAppearance = nil
             }
             button.setAccessibilityLabel("Agent Usage")
             button.toolTip = "Agent Usage"
         } else {
-            if !button.attributedTitle.isEqual(to: title) || button.image != nil {
-                button.image = nil
-                button.attributedTitle = title
-                button.imagePosition = .noImage
+            let appearance = button.effectiveAppearance
+            if lastAgentTitle?.isEqual(to: title) != true || lastAgentAppearance != appearance.name.rawValue {
+                button.title = ""
+                button.image = AgentMenuBarText.image(entries, appearance: appearance)
+                button.imagePosition = .imageOnly
                 item.length = NSStatusItem.variableLength
+                lastAgentTitle = title
+                lastAgentAppearance = appearance.name.rawValue
             }
             let label = agentWindow.menuBarAccessibilityLabel
             button.setAccessibilityLabel(label)
@@ -475,6 +485,34 @@ final class StatusItemController: NSObject {
 }
 
 enum AgentMenuBarText {
+    /// A compact column per agent: small name above a larger percentage, in a 22-point menu bar.
+    static func image(_ agents: [(name: String, percent: Double?)], appearance: NSAppearance) -> NSImage {
+        let nameFont = NSFont.systemFont(ofSize: 8, weight: .medium)
+        let valueFont = NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .semibold)
+        let columns = agents.map { agent in
+            let value = agent.percent.map { "\(Int($0.rounded()))%" } ?? "—"
+            let name = NSAttributedString(
+                string: agent.name, attributes: [.font: nameFont, .foregroundColor: NSColor.labelColor])
+            let percent = NSAttributedString(
+                string: value,
+                attributes: [.font: valueFont, .foregroundColor: agent.percent.map(percentageColor) ?? NSColor.labelColor])
+            return (name: name, percent: percent, width: ceil(max(name.size().width, percent.size().width)))
+        }
+        let gap: CGFloat = 8
+        let width = columns.reduce(CGFloat(4)) { $0 + $1.width } + CGFloat(max(0, columns.count - 1)) * gap
+        return NSImage(size: NSSize(width: width, height: 22), flipped: false) { _ in
+            appearance.performAsCurrentDrawingAppearance {
+                var x: CGFloat = 2
+                for column in columns {
+                    column.name.draw(at: NSPoint(x: x + (column.width - column.name.size().width) / 2, y: 12))
+                    column.percent.draw(at: NSPoint(x: x + (column.width - column.percent.size().width) / 2, y: 0))
+                    x += column.width + gap
+                }
+            }
+            return true
+        }
+    }
+
     static func percentageColor(_ percent: Double) -> NSColor {
         percent <= 10 ? .systemRed : percent <= 30 ? .systemOrange : .labelColor
     }

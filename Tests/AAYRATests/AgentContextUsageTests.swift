@@ -140,6 +140,18 @@ struct AgentContextUsageTests {
         #expect(AgentContextModels.capacity(model: "unlisted-private-model-123", provider: "private") == nil)
     }
 
+    @Test func bundledCatalogFoldsAgreedModelsAndRefusesAmbiguousOnes() {
+        // Every provider agrees on gpt-4o, so it survives folding as one bare key.
+        #expect(AgentContextModels.capacity(model: "gpt-4o", provider: nil) == 128_000)
+        #expect(AgentContextModels.capacity(model: "gpt-4o", provider: "openai") == 128_000)
+        // Providers disagree on claude-sonnet-4-5, so only an exact pair is trusted.
+        #expect(AgentContextModels.capacity(model: "claude-sonnet-4-5", provider: "anthropic") == 200_000)
+        #expect(AgentContextModels.capacity(model: "claude-sonnet-4-5", provider: nil) == nil)
+        // A model id that itself contains a slash stays provider-qualified too.
+        #expect(AgentContextModels.capacity(model: "deepseek-ai/deepseek-v4-flash", provider: "aiand") == 1_000_000)
+        #expect(AgentContextModels.capacity(model: "deepseek-ai/deepseek-v4-flash", provider: nil) == nil)
+    }
+
     @Test func diskReaderOnlyTouchesRequestedAgentsAndDoesNotReuseOldSessions() throws {
         let home = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: home) }

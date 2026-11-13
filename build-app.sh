@@ -3,7 +3,7 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-swift build -c release --arch arm64 -Xswiftc -Osize   # optimise for size: keeps the app under 1 MB
+swift build -c release --arch arm64 -Xswiftc -Osize   # optimise for size: about 1.9 MB including resources
 
 APP="AAYRA.app"
 BIN="$(swift build -c release --arch arm64 --show-bin-path)/AAYRA"
@@ -14,7 +14,7 @@ cp "$BIN" "$APP/Contents/MacOS/AAYRA"
 strip -x "$APP/Contents/MacOS/AAYRA"     # drop debug symbols (roughly halves the binary)
 cp Resources/Info.plist "$APP/Contents/Info.plist"
 cp Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
-cp Resources/AgentContextModels.json "$APP/Contents/Resources/AgentContextModels.json"
+cp Resources/AgentContextModels.deflate "$APP/Contents/Resources/AgentContextModels.deflate"
 cp Resources/AgentIcons/*.png "$APP/Contents/Resources/"
 cp Resources/AgentIcons/LICENSE "$APP/Contents/Resources/AgentIcons-LICENSE"
 cp Resources/AgentIcons/NOTICE.md "$APP/Contents/Resources/AgentIcons-NOTICE.md"

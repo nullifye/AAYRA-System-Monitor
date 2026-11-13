@@ -1,3 +1,4 @@
+import Compression
 import Foundation
 import SQLite3
 
@@ -330,17 +331,41 @@ enum AgentContextUsage {
     }
 }
 
+/// Model capacities for agents whose records say how many tokens are in the window but not how big
+/// the window is. The bundled catalog is a capacity-only snapshot of the Oh My Pi model catalog,
+/// folded (one bare key where every provider agrees) and shipped as a raw DEFLATE stream: 31 KB
+/// instead of 227 KB of JSON. It is read once, lazily, and never fetched from the network.
 enum AgentContextModels {
     private static let models: [String: Int64] = {
         let source = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
-            .deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent("Resources/AgentContextModels.json")
-        let url = Bundle.main.url(forResource: "AgentContextModels", withExtension: "json") ?? source
-        guard let data = try? Data(contentsOf: url),
+            .deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Resources/AgentContextModels.deflate")
+        let url = Bundle.main.url(forResource: "AgentContextModels", withExtension: "deflate") ?? source
+        guard let stream = try? Data(contentsOf: url), let data = inflate(stream),
             let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
             let models = root["models"] as? [String: Int64]
         else { return [:] }
         return models
     }()
+
+    /// Raw DEFLATE, which is what a gzip file holds without its container; Apple's decoder reads
+    /// that directly and does not accept the wrapper. The buffer grows until the catalog fits.
+    private static func inflate(_ stream: Data) -> Data? {
+        var capacity = 1 << 18
+        while capacity <= 8 << 20 {
+            var output = Data(count: capacity)
+            let written = output.withUnsafeMutableBytes { destination in
+                stream.withUnsafeBytes { input in
+                    compression_decode_buffer(
+                        destination.bindMemory(to: UInt8.self).baseAddress!, capacity,
+                        input.bindMemory(to: UInt8.self).baseAddress!, stream.count, nil, COMPRESSION_ZLIB)
+                }
+            }
+            if written > 0 { return output.prefix(written) }
+            capacity <<= 2
+        }
+        return nil
+    }
 
     static func capacity(model: String?, provider: String?) -> Int64? {
         guard let model, !model.isEmpty else { return nil }

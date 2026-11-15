@@ -116,14 +116,7 @@ struct SettingsView: View {
 
             Section {
                 Toggle("Animate icon", isOn: $animateIcon)
-                Toggle(
-                    "Show CPU percentage",
-                    isOn: Binding(
-                        get: { showPercent || !animateIcon },
-                        set: { showPercent = $0 }
-                    )
-                )
-                .disabled(!animateIcon)
+                Toggle("Show CPU percentage", isOn: $showPercent)
                 Toggle("Show network speed", isOn: $showNetworkSpeed)
                 Toggle("Show Agent Usage", isOn: $showAgentUsage)
             } header: {

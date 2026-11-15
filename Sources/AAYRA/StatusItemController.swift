@@ -65,8 +65,8 @@ final class StatusItemController: NSObject {
 
     /// Spins only while the screen is awake and neither Reduce Motion nor the setting turns it off.
     private var isAnimating: Bool { !isScreenAsleep && !reduceMotion && AppSettings.animateIcon }
-    /// Without the spin there's no load signal, so the number is shown instead.
-    private var showsPercent: Bool { reduceMotion || !AppSettings.animateIcon || AppSettings.showPercentInMenuBar }
+    /// Percentage visibility is independent of icon animation and Reduce Motion.
+    private var showsPercent: Bool { AppSettings.showPercentInMenuBar }
 
     init(monitor: SystemMonitor) {
         self.monitor = monitor

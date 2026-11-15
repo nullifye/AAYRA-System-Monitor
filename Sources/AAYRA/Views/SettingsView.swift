@@ -35,6 +35,7 @@ enum SettingsWindow {
 /// System Settings–style grouped form.
 struct SettingsView: View {
     @AppStorage(AppSettings.Key.animateIcon) private var animateIcon = true
+    @AppStorage(AppSettings.Key.iconAnimationStyle) private var iconAnimationStyle = AppSettings.IconAnimationStyle.turbine
     @AppStorage(AppSettings.Key.showPercentInMenuBar) private var showPercent = false
     @AppStorage(AppSettings.Key.showNetworkInMenuBar) private var showNetworkSpeed = false
     @AppStorage(AppSettings.Key.showAgentUsageInMenuBar) private var showAgentUsage = false
@@ -116,6 +117,15 @@ struct SettingsView: View {
 
             Section {
                 Toggle("Animate icon", isOn: $animateIcon)
+                    .help(
+                        iconAnimationStyle == .gauge
+                            ? "Follow CPU usage with the gauge needle." : "Spin the turbine with CPU activity.")
+                Picker("Animation style", selection: $iconAnimationStyle) {
+                    ForEach(AppSettings.IconAnimationStyle.allCases, id: \.self) { style in
+                        Text(style.title).tag(style)
+                    }
+                }
+                .help("CPU gauge: the needle points left at 0%, up at 50%, and right at 100%.")
                 Toggle("Show CPU percentage", isOn: $showPercent)
                 Toggle("Show network speed", isOn: $showNetworkSpeed)
                 Toggle("Show Agent Usage", isOn: $showAgentUsage)

@@ -11,7 +11,7 @@ Native Swift and SwiftUI · Apple Silicon · macOS 15 or later · about 1.9 MB
 
 ## Highlights
 
-- 🌀 **Live turbine in the menu bar.** It spins slowly when the Mac is idle and speeds up with CPU load, adding motion blur above 80 %. Icon animation and CPU percentage are independent settings. Reduce Motion stops the animation; the CPU % appears only when enabled. You can also add live ↑/↓ network speed as a second, compact menu bar item.
+- 🌀 **Live turbine in the menu bar.** It spins slowly when the Mac is idle and speeds up with CPU load, adding motion blur above 80 %. Animation is on by default. Choose **Turbine** or **CPU gauge** in Settings → Menu Bar → Animation style. The gauge needle points left at 0%, up at 50%, and right at 100%, with proportional positions in between. Turning animation off parks the gauge needle at 25%. Icon animation and CPU percentage are independent settings. Reduce Motion stops the animation; the CPU % appears only when enabled. You can also add live ↑/↓ network speed as a second, compact menu bar item.
 - 🗂 **Floating dashboard.** Cards float under the menu bar like Notification Center, on Liquid Glass in macOS 26 and later. Each card shows one big number with a bar or live chart.
 - 🔎 **Details on click.** Click a card and a two-column detail panel opens beside it, on whichever side has room. The numbers update live, and you can select and copy any value. Header buttons jump straight to the right place: **Manage Storage…**, **Battery Settings…**, **Wi-Fi/Network Settings…** or **Activity Monitor**.
 - 📈 **An hour of history.** The CPU, GPU and Network detail charts switch between the last **1 minute, 10 minutes or 1 hour**, with peak and average for the chosen range. History is recorded in the background, even while the panel is closed; GPU history starts when its card is enabled.
@@ -172,13 +172,13 @@ GitHub Actions ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs for
 - **To release:** set the version in `Resources/Info.plist`, commit, then push a matching tag.
 
   ```bash
-  git tag -a v1.9 -m "AAYRA 1.9" && git push origin v1.9
+  git tag -a v1.10 -m "AAYRA 1.10" && git push origin v1.10
   ```
 - **Homebrew:** once CI has published the release, point the cask at it, then commit and push:
 
   ```bash
   scripts/update-cask.sh            # reads the version from Info.plist, downloads the zip, writes its SHA-256
-  git commit -m "Homebrew cask: AAYRA 1.9" Casks/aayra.rb && git push
+  git commit -m "Homebrew cask: AAYRA 1.10" Casks/aayra.rb && git push
   ```
 
 ## Privacy and notes
@@ -194,6 +194,7 @@ GitHub Actions ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs for
 
 ## Versions
 
+- **1.10.** A CPU gauge joins the turbine as a menu-bar icon style: a half-circle meter whose needle points left at 0 %, up at 50 % and right at 100 %, chosen in Settings → Menu Bar → Animation style. Turning animation off parks the gauge needle at 25 %. Settings for icon animation and CPU percentage visibility are decoupled.
 - **1.9.** Agent percentages in the menu bar: pick up to three agents with the eye control in Show Agents, and their remaining allowance or context use replaces the sparkle. Context-fill readings for local agents, resolved against a bundled model-capacity table that now ships compressed at 31 KB instead of 227 KB. Cards show the first five agents individually and the rest under Other Agents, in the order you drag them. Real 64×64 logos for all 15 agents. Reset times now handle millisecond timestamps and date-only Copilot dates correctly, and every provider applies the same 35-day sanity bound. The CPU detail view splits each core into user and system time.
 - **1.8.** Optional Agent Usage panel with its own menu-bar icon: account limits for Claude Code, Codex, GitHub Copilot and OpenCode, and today's local token counts for 15 agents (adding Gemini CLI, Qwen Code, Cline, Roo Code, Kilo Code, Kimi, Pi, Oh My Pi, Cherry Studio, ZCode and Perch's context fill). Choose agents with the gear button; the first three found on this Mac are shown by default and unticked agents aren't read. Click a card for usage by model, by token type and, optionally, by project, plus plans, Claude usage credits, Codex feature limits and Copilot premium request counts. Account checks are paced (5 min for Claude, 2 min for others) and keep the last good numbers when a service is busy.
 - **1.7.** Optional SSD SMART, sustained battery heat and VPN-disconnect alerts. Privacy-scrubbed diagnostic snapshot export with explicit opt-ins for IP addresses, serial numbers and process names. GPU detail charts now offer 1m / 10m / 1h history, average and peak, plus memory share and system thermal state. Menu-bar CPU text stays steady as the percentage changes.

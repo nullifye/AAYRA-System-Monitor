@@ -19,7 +19,7 @@ final class FloatingPanel: NSPanel {
     override var canBecomeKey: Bool { true }
 }
 
-/// Owns the menu bar item: a turbine that spins faster as CPU load rises, plus the floating panel.
+/// Owns the selectable CPU activity icon and its floating panel.
 @MainActor
 final class StatusItemController: NSObject {
     // Angular speed in degrees per second, from idle to 100 % CPU.
@@ -57,6 +57,9 @@ final class StatusItemController: NSObject {
 
     private var frameTimer: Timer?
     private var angle = 0.0
+    private var gaugeLoad: Double?
+    private var lastGaugePercent: Int?
+    private var lastIconStyle: AppSettings.IconAnimationStyle?
     private var lastFrameTime = ProcessInfo.processInfo.systemUptime
     private var isScreenAsleep = false
     private var reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
@@ -115,6 +118,7 @@ final class StatusItemController: NSObject {
             self, selector: #selector(accessibilityChanged),
             name: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification, object: nil)
 
+        updateIcon(elapsed: 0)
         updateLabel()
         updateAgentItem()
         scheduleNextFrame()
@@ -127,8 +131,14 @@ final class StatusItemController: NSObject {
         let load = min(max(monitor.smoothedCPU, 0), 1)
         let speed = Self.minSpeed + (Self.maxSpeed - Self.minSpeed) * load
         let animating = isAnimating
-        // Without animation, wake only once per second to refresh the label.
-        let fps = animating ? min(Self.maxFPS, max(Self.minFPS, speed / Self.targetStep)) : 1
+        // A settled gauge only needs sample updates; animate at 15 fps while its needle is moving.
+        let fps: Double
+        if AppSettings.iconAnimationStyle == .gauge {
+            let moving = abs((gaugeLoad ?? 0) - CPUGaugeFrames.normalized(monitor.cpu.total)) >= 0.005
+            fps = animating && moving ? Self.maxFPS : 1
+        } else {
+            fps = animating ? min(Self.maxFPS, max(Self.minFPS, speed / Self.targetStep)) : 1
+        }
 
         let timer = Timer(timeInterval: 1 / fps, repeats: false) { [weak self] _ in
             MainActor.assumeIsolated { self?.advanceFrame() }
@@ -143,20 +153,47 @@ final class StatusItemController: NSObject {
         let dt = min(now - lastFrameTime, 0.25)
         lastFrameTime = now
 
-        if isAnimating {
-            let load = min(max(monitor.smoothedCPU, 0), 1)
-            angle = (angle + (Self.minSpeed + (Self.maxSpeed - Self.minSpeed) * load) * dt)
-                .truncatingRemainder(dividingBy: 90)
-            let index = Int(angle / SpinnerFrames.degreesPerFrame)
-            statusItem.button?.image = SpinnerFrames.frame(at: index, blurred: load > Self.blurThreshold)
-        } else if angle != 0, !isScreenAsleep {
-            angle = 0  // animation switched off: rest upright
-            statusItem.button?.image = SpinnerFrames.frame(at: 0, blurred: false)
-        }
+        updateIcon(elapsed: dt)
         updateLabel()
         updateNetworkItem()
         updateAgentItem()
         scheduleNextFrame()
+    }
+
+    private func updateIcon(elapsed: TimeInterval) {
+        guard !isScreenAsleep else { return }
+        let style = AppSettings.iconAnimationStyle
+        let changed = style != lastIconStyle
+        if changed {
+            angle = 0
+            gaugeLoad = nil
+            lastGaugePercent = nil
+            lastIconStyle = style
+        }
+        switch style {
+        case .turbine:
+            if isAnimating {
+                let load = min(max(monitor.smoothedCPU, 0), 1)
+                angle = (angle + (Self.minSpeed + (Self.maxSpeed - Self.minSpeed) * load) * elapsed)
+                    .truncatingRemainder(dividingBy: 90)
+                statusItem.button?.image = SpinnerFrames.frame(
+                    at: Int(angle / SpinnerFrames.degreesPerFrame), blurred: load > Self.blurThreshold)
+            } else if changed || angle != 0 {
+                angle = 0
+                statusItem.button?.image = SpinnerFrames.frame(at: 0, blurred: false)
+            }
+        case .gauge:
+            let target = CPUGaugeFrames.target(for: monitor.cpu.total, animationEnabled: AppSettings.animateIcon)
+            let previous = gaugeLoad ?? target
+            let next = isAnimating ? previous + (target - previous) * (1 - exp(-elapsed / 0.12)) : target
+            let displayed = abs(next - target) < 0.005 ? target : next
+            gaugeLoad = displayed
+            let percent = Int((displayed * 100).rounded())
+            if percent != lastGaugePercent {
+                statusItem.button?.image = CPUGaugeFrames.frame(at: percent)
+                lastGaugePercent = percent
+            }
+        }
     }
 
     /// Shows, updates or removes the network speed item. Runs with the animation timer (at least once a
@@ -266,6 +303,9 @@ final class StatusItemController: NSObject {
     @objc private func settingsDidChange() {
         applyShortcut()
         updateAgentItem()
+        updateIcon(elapsed: 0)
+        updateLabel()
+        scheduleNextFrame()
     }
 
     private func updateLabel() {
@@ -302,7 +342,7 @@ final class StatusItemController: NSObject {
     @objc private func accessibilityChanged() {
         reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         lastShownPercent = -1
-        if reduceMotion { statusItem.button?.image = SpinnerFrames.frame(at: 0, blurred: false) }
+        updateIcon(elapsed: 0)
         updateLabel()
         scheduleNextFrame()
     }

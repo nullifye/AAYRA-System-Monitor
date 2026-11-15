@@ -5,6 +5,7 @@ import Foundation
 enum AppSettings {
     enum Key {
         static let animateIcon = "animateIcon"
+        static let iconAnimationStyle = "iconAnimationStyle"
         static let showPercentInMenuBar = "showPercentInMenuBar"
         static let showNetworkInMenuBar = "showNetworkInMenuBar"
         static let showAgentUsageInMenuBar = "showAgentUsageInMenuBar"
@@ -55,6 +56,21 @@ enum AppSettings {
         case system, celsius, fahrenheit
     }
 
+    enum IconAnimationStyle: String, CaseIterable {
+        case turbine, gauge
+
+        var title: String {
+            switch self {
+            case .turbine: "Turbine"
+            case .gauge: "CPU gauge"
+            }
+        }
+
+        static func saved(_ rawValue: String?) -> Self {
+            rawValue.flatMap(Self.init(rawValue:)) ?? .turbine
+        }
+    }
+
     private static var defaults: UserDefaults { .standard }
 
     private static func bool(_ key: String, default value: Bool) -> Bool {
@@ -62,6 +78,7 @@ enum AppSettings {
     }
 
     static var animateIcon: Bool { bool(Key.animateIcon, default: true) }
+    static var iconAnimationStyle: IconAnimationStyle { .saved(defaults.string(forKey: Key.iconAnimationStyle)) }
     static var showPercentInMenuBar: Bool { bool(Key.showPercentInMenuBar, default: false) }
     static var showNetworkInMenuBar: Bool { bool(Key.showNetworkInMenuBar, default: false) }
     static var showAgentUsageInMenuBar: Bool { bool(Key.showAgentUsageInMenuBar, default: false) }

@@ -184,8 +184,14 @@ enum AgentLocalTokens {
     private struct Budget {
         var files: [URL] = []
         /// Total file size allowed on top of the file count; nil when only tails are read, so size is moot.
-        var maximumBytes: Int64? = 256_000_000
+        var maximumBytes: Int64?
         private var bytes: Int64 = 0
+
+        // Explicit: a private stored property makes the memberwise initializer private, which older
+        // compilers (CI) refuse to call from the enclosing type.
+        init(maximumBytes: Int64? = 256_000_000) {
+            self.maximumBytes = maximumBytes
+        }
 
         /// Adds `file` if it is a regular file modified since `start`. Returns false once over budget.
         mutating func add(_ file: URL, since start: Date) -> Bool {

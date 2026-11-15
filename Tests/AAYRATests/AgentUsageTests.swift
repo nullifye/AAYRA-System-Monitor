@@ -291,6 +291,20 @@ struct AgentUsageTests {
         #expect(AgentLocalTokens.copilotTokens(Data(lines.utf8), day: today).total == 140)
     }
 
+    @Test func copilotChatLogReadsTheResolvedModelAndTokensFromTheResult() {
+        // Requests only say "auto"; the finished response names the model that answered.
+        let todayMs = nowMs
+        let lines = [
+            #"{"kind":0,"v":{"requests":[{"timestamp":\#(todayMs),"modelId":"auto"}]}}"#,
+            #"{"kind":1,"k":["requests",0,"result"],"v":{"metadata":{"resolvedModel":"claude-sonnet-5","promptTokens":300,"outputTokens":7}}}"#,
+            #"{"kind":1,"k":["requests",0,"promptTokens"],"v":999}"#,
+        ].joined(separator: "\n")
+        let usage = AgentLocalTokens.copilotTokens(Data(lines.utf8), day: today)
+        #expect(usage.byModel["claude-sonnet-5"]?.input == 999)
+        #expect(usage.byModel["claude-sonnet-5"]?.output == 7)
+        #expect(usage.byModel["auto"] == nil)
+    }
+
     @Test func agentChoicesDefaultToAccountsAndDetectedTools() throws {
         let home = FileManager.default.temporaryDirectory.appendingPathComponent("aayra-agents-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: home) }
@@ -405,6 +419,110 @@ struct AgentUsageTests {
         #expect(AgentLocalTokens.openCodeTokens(database: url, day: today)?.total == 15)
     }
 
+    @Test func vscodeAgentHostUsageCountsModelCalls() {
+        let lines = [
+            #"{"schemaVersion":2,"kind":"modelCall","ts":"\#(stamp)","model":"claude-sonnet-4-5","inputTokens":10,"outputTokens":5,"cacheReadTokens":100}"#,
+            #"{"schemaVersion":2,"kind":"modelCall","ts":"\#(stamp)","model":"gpt-5","inputTokens":1,"outputTokens":2}"#,
+            #"{"kind":"modelCall","ts":"\#(yesterday)","model":"gpt-5","inputTokens":999,"outputTokens":1}"#,
+            "not json",
+        ].joined(separator: "\n")
+        let usage = AgentLocalTokens.agentHostTokens(Data(lines.utf8), day: today)
+        #expect(usage.total == 118)
+        #expect(usage.byModel["claude-sonnet-4-5"] == TokenTally(input: 10, output: 5, cacheRead: 100))
+        #expect(usage.byModel["gpt-5"]?.total == 3)
+    }
+
+    @Test func copilotAndExtensionsReadNamedProfiles() throws {
+        // A named VS Code profile keeps its extension storage apart from the default profile's.
+        let home = FileManager.default.temporaryDirectory.appendingPathComponent("aayra-profiles-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: home) }
+        let profile = home.appendingPathComponent("Library/Application Support/Code/User/profiles/work")
+        let chats = profile.appendingPathComponent("globalStorage/emptyWindowChatSessions")
+        try FileManager.default.createDirectory(at: chats, withIntermediateDirectories: true)
+        let millis = Int64(Date().timeIntervalSince1970 * 1_000)
+        let chat =
+            #"{"kind":0,"v":{"requests":[{"timestamp":\#(millis),"promptTokens":40,"completionTokens":2}]}}"#
+        try Data(chat.utf8).write(to: chats.appendingPathComponent("s.jsonl"))
+        let tasks = profile.appendingPathComponent("globalStorage/saoudrizwan.claude-dev/tasks/t")
+        try FileManager.default.createDirectory(at: tasks, withIntermediateDirectories: true)
+        let event =
+            #"[{"type":"say","say":"api_req_started","ts":\#(millis),"text":"{\"tokensIn\":5,\"tokensOut\":3}"}]"#
+        try Data(event.utf8).write(to: tasks.appendingPathComponent("ui_messages.json"))
+        let paths = AgentPaths(home: home, environment: [:])
+        #expect(paths.vscodeProfiles.map(\.lastPathComponent) == ["work"])
+        #expect(paths.editorUsers.contains { $0.lastPathComponent == "work" })
+        let usage = AgentLocalTokens.today(for: [.copilot, .cline], paths: paths)
+        #expect(usage[.copilot]?.total == 42)
+        #expect(usage[.cline]?.total == 8)
+    }
+
+    @Test func agentHostLogNamesMatchVSCodeSanitization() {
+        #expect(AgentLocalTokens.sanitizedChat("ahp-chat://default/abc") == "ahp-chat___default_abc")
+        #expect(AgentLocalTokens.sanitizedChat("a.b-c_d/e:f") == "a.b-c_d_e_f")
+    }
+
+    @Test func copilotAgentHostUsageSkipsLogsOwnedByOtherAgents() throws {
+        // The editor writes one usage log per agent-host session; Claude and Codex keep their own ledgers.
+        let home = FileManager.default.temporaryDirectory.appendingPathComponent("aayra-agenthost-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: home) }
+        let user = home.appendingPathComponent("Library/Application Support/Code/User")
+        let logs = user.appendingPathComponent("agentHostUsage")
+        try FileManager.default.createDirectory(at: logs, withIntermediateDirectories: true)
+        let at = Date().ISO8601Format()
+        func record(_ model: String, _ input: Int, _ output: Int, _ cache: Int) -> Data {
+            Data(
+                #"{"schemaVersion":2,"kind":"modelCall","ts":"\#(at)","model":"\#(model)","inputTokens":\#(input),"outputTokens":\#(output),"cacheReadTokens":\#(cache)}"#
+                    .utf8)
+        }
+        let copilot = "ahp-chat://default/Y29waWxvdGNsaTovMQ"
+        let claude = "ahp-chat://default/Y2xhdWRlOi8y"
+        try record("gpt-5", 10, 2, 100)
+            .write(to: logs.appendingPathComponent(AgentLocalTokens.sanitizedChat(copilot) + ".jsonl"))
+        try record("claude-sonnet-4-5", 900, 9, 0)
+            .write(to: logs.appendingPathComponent(AgentLocalTokens.sanitizedChat(claude) + ".jsonl"))
+        let database = user.appendingPathComponent("globalStorage/agent-host.db")
+        try FileManager.default.createDirectory(at: database.deletingLastPathComponent(), withIntermediateDirectories: true)
+        var db: OpaquePointer?
+        #expect(sqlite3_open(database.path, &db) == SQLITE_OK)
+        guard let db else { return }
+        let sql = """
+            CREATE TABLE chats_v2(chat_uri TEXT PRIMARY KEY, owner_session_uri TEXT, chat_order INTEGER, tombstoned INTEGER);
+            INSERT INTO chats_v2 VALUES('\(copilot)','copilotcli:/1',0,0);
+            INSERT INTO chats_v2 VALUES('\(claude)','claude:/2',0,1);
+            """
+        #expect(sqlite3_exec(db, sql, nil, nil, nil) == SQLITE_OK)
+        sqlite3_close(db)
+        #expect(AgentLocalTokens.agentHostOwners(database)?.count == 2)
+        let usage = AgentLocalTokens.today(for: [.copilot], paths: AgentPaths(home: home, environment: [:]))
+        #expect(usage[.copilot]?.total == 112)
+        #expect(usage[.copilot]?.byModel["claude-sonnet-4-5"] == nil)
+    }
+
+    @Test func agentHostOwnersReadsDatabaseLeftWithoutItsSharedMemory() throws {
+        // VS Code can leave its WAL database behind without the `-shm` file a read-only reader needs, and in
+        // a folder it cannot write to. Such a database is still readable in place.
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("aayra-host-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer {
+            try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: folder.path)
+            try? FileManager.default.removeItem(at: folder)
+        }
+        let url = folder.appendingPathComponent("agent-host.db")
+        var db: OpaquePointer?
+        #expect(sqlite3_open(url.path, &db) == SQLITE_OK)
+        guard let db else { return }
+        let sql = """
+            PRAGMA journal_mode=wal;
+            CREATE TABLE chats_v2(chat_uri TEXT PRIMARY KEY, owner_session_uri TEXT, chat_order INTEGER);
+            INSERT INTO chats_v2 VALUES('ahp-chat://default/Y29waWxvdGNsaTovMQ','copilotcli:/1',0);
+            """
+        #expect(sqlite3_exec(db, sql, nil, nil, nil) == SQLITE_OK)
+        sqlite3_close(db)
+        for suffix in ["-shm", "-wal"] { try? FileManager.default.removeItem(atPath: url.path + suffix) }
+        try FileManager.default.setAttributes([.posixPermissions: 0o555], ofItemAtPath: folder.path)
+        #expect(AgentLocalTokens.agentHostOwners(url)?["ahp-chat___default_Y29waWxvdGNsaTovMQ"] == "copilotcli")
+    }
+
     @Test func todayOnlyReadsRequestedAgents() throws {
         let home = FileManager.default.temporaryDirectory.appendingPathComponent("aayra-today-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: home) }
@@ -416,6 +534,49 @@ struct AgentUsageTests {
         let paths = AgentPaths(home: home, environment: [:])
         #expect(AgentLocalTokens.today(for: [.qwen], paths: paths)[.qwen]?.total == 42)
         #expect(AgentLocalTokens.today(for: [.claude], paths: paths).isEmpty)
+    }
+
+    @Test func claudeReadsTheTailOfADayLongTranscript() throws {
+        // A single session can log several megabytes in one day; the newest record must still be found
+        // without reading the whole file, so the window grows until it reaches the start of the day.
+        let home = FileManager.default.temporaryDirectory.appendingPathComponent("aayra-claude-tail-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: home) }
+        let folder = home.appendingPathComponent(".claude/projects/p")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let stamp = ISO8601DateFormatter().string(from: Date())
+        let padding =
+            #"{"type":"user","timestamp":"\#(stamp)","message":{"content":"\#(String(repeating: "x", count: 512))"}}"#
+            + "\n"
+        let record =
+            #"{"type":"assistant","timestamp":"\#(stamp)","requestId":"r","cwd":"/work/p","message":{"model":"claude-opus-4-5-20251101","usage":{"input_tokens":7,"output_tokens":3}}}"#
+            + "\n"
+        var file = Data()
+        for _ in 0..<9_000 { file.append(Data(padding.utf8)) }
+        file.append(Data(record.utf8))
+        try file.write(to: folder.appendingPathComponent("s.jsonl"))
+        let usage = AgentLocalTokens.today(for: [.claude], paths: AgentPaths(home: home, environment: [:]))[.claude]
+        #expect(usage?.total == 10)
+        #expect(usage?.byProject["/work/p"] == 10)
+    }
+
+    @Test func claudeIgnoresATranscriptThatOnlyHasEarlierDays() throws {
+        let home = FileManager.default.temporaryDirectory.appendingPathComponent("aayra-claude-old-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: home) }
+        let folder = home.appendingPathComponent(".claude/projects/p")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let stamp = ISO8601DateFormatter().string(from: Calendar.current.startOfDay(for: Date()).addingTimeInterval(-3_600))
+        let padding =
+            #"{"type":"user","timestamp":"\#(stamp)","message":{"content":"\#(String(repeating: "x", count: 512))"}}"#
+            + "\n"
+        let record =
+            #"{"type":"assistant","timestamp":"\#(stamp)","requestId":"old","message":{"model":"claude-opus-4-5","usage":{"input_tokens":999,"output_tokens":1}}}"#
+            + "\n"
+        var file = Data()
+        for _ in 0..<9_000 { file.append(Data(padding.utf8)) }
+        file.append(Data(record.utf8))
+        try file.write(to: folder.appendingPathComponent("s.jsonl"))
+        // The window stops as soon as it reaches yesterday, so none of these records are counted.
+        #expect(AgentLocalTokens.today(for: [.claude], paths: AgentPaths(home: home, environment: [:])).isEmpty)
     }
 
     @Test func accountRequestsArePacedAndReuseTheLastResult() async {

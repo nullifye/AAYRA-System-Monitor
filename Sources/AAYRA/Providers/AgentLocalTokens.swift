@@ -102,17 +102,7 @@ enum AgentLocalTokens {
         case .openCode:
             return openCodeTokens(database: paths.data.appendingPathComponent("opencode/opencode.db"), day: day)
         case .copilot:
-            guard let files = copilotSessionFiles(paths, since: day.start) else { return nil }
-            var usage = AgentTokenUsage()
-            var folders: [URL: String?] = [:]
-            for file in files {
-                guard let data = try? Data(contentsOf: file, options: .mappedIfSafe) else { return nil }
-                // workspaceStorage/<hash>/chatSessions/<file>: the workspace's folder is in <hash>/workspace.json.
-                let workspace = file.deletingLastPathComponent().deletingLastPathComponent()
-                if folders[workspace] == nil { folders[workspace] = copilotWorkspaceFolder(workspace) }
-                usage = usage + copilotTokens(data, day: day, project: folders[workspace] ?? nil)
-            }
-            return usage
+            return combine(copilotChatTokens(paths, day: day), copilotAgentHostTokens(paths, day: day))
         case .gemini:
             let files = recentFiles(
                 in: [paths.dot(".gemini").appendingPathComponent("tmp")], since: day.start, extensions: ["json", "jsonl"]
@@ -193,6 +183,8 @@ enum AgentLocalTokens {
     /// Scan budget: past this many recent files or bytes, report nothing rather than a partial count.
     private struct Budget {
         var files: [URL] = []
+        /// Total file size allowed on top of the file count; nil when only tails are read, so size is moot.
+        var maximumBytes: Int64? = 256_000_000
         private var bytes: Int64 = 0
 
         /// Adds `file` if it is a regular file modified since `start`. Returns false once over budget.
@@ -204,14 +196,15 @@ enum AgentLocalTokens {
             else { return true }
             bytes += Int64(size)
             files.append(file)
-            return files.count <= 250 && bytes <= 256_000_000
+            return files.count <= 250 && (maximumBytes.map { bytes <= $0 } ?? true)
         }
     }
 
     private static func recentFiles(
-        in roots: [URL], since start: Date, extensions: Set<String> = ["jsonl"], where include: (URL) -> Bool = { _ in true }
+        in roots: [URL], since start: Date, extensions: Set<String> = ["jsonl"],
+        maximumBytes: Int64? = 256_000_000, where include: (URL) -> Bool = { _ in true }
     ) -> [URL]? {
-        var budget = Budget()
+        var budget = Budget(maximumBytes: maximumBytes)
         for root in roots {
             guard
                 let enumerator = FileManager.default.enumerator(
@@ -232,12 +225,33 @@ enum AgentLocalTokens {
         func text(_ column: Int32) -> String? { sqlite3_column_text(statement, column).map { String(cString: $0) } }
     }
 
-    /// Runs `sql` read-only with today's start and end (ms) bound to ?1 and ?2. False if the database or
-    /// table is missing, so callers can report "unknown" rather than zero.
-    private static func sqliteRows(database: URL, day: DateInterval, sql: String, row: (Row) -> Void) -> Bool {
+    /// Runs `sql` read-only, binding the day's start and end (ms) to ?1 and ?2 when one is given. False if
+    /// the database or table is missing, so callers can report "unknown" rather than zero.
+    private static func sqliteRows(database: URL, day: DateInterval? = nil, sql: String, row: (Row) -> Void) -> Bool {
+        var produced = false
+        let ok = query(database: database, day: day, immutable: false, sql: sql) { found in
+            produced = true
+            row(found)
+        }
+        // A WAL-mode database whose writer has gone away leaves no `-shm` file, which a read-only connection
+        // cannot create; read the committed pages in place instead, as long as no row was already delivered.
+        guard !ok, !produced else { return ok }
+        return query(database: database, day: day, immutable: true, sql: sql, row: row)
+    }
+
+    private static func query(
+        database: URL, day: DateInterval?, immutable: Bool, sql: String, row: (Row) -> Void
+    ) -> Bool {
         guard FileManager.default.fileExists(atPath: database.path) else { return false }
+        var flags = SQLITE_OPEN_READONLY | SQLITE_OPEN_NOMUTEX
+        var path = database.path
+        if immutable {
+            let escaped = path.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? path
+            path = "file:\(escaped)?immutable=1"
+            flags |= SQLITE_OPEN_URI
+        }
         var db: OpaquePointer?
-        guard sqlite3_open_v2(database.path, &db, SQLITE_OPEN_READONLY | SQLITE_OPEN_NOMUTEX, nil) == SQLITE_OK,
+        guard sqlite3_open_v2(path, &db, flags, nil) == SQLITE_OK,
             let db
         else { if db != nil { sqlite3_close(db) }; return false }
         defer { sqlite3_close(db) }
@@ -246,8 +260,10 @@ enum AgentLocalTokens {
         guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK, let statement
         else { if statement != nil { sqlite3_finalize(statement) }; return false }
         defer { sqlite3_finalize(statement) }
-        sqlite3_bind_int64(statement, 1, Int64(day.start.timeIntervalSince1970 * 1_000))
-        sqlite3_bind_int64(statement, 2, Int64(day.end.timeIntervalSince1970 * 1_000))
+        if let day {
+            sqlite3_bind_int64(statement, 1, Int64(day.start.timeIntervalSince1970 * 1_000))
+            sqlite3_bind_int64(statement, 2, Int64(day.end.timeIntervalSince1970 * 1_000))
+        }
         while true {
             let step = sqlite3_step(statement)
             if step == SQLITE_ROW { row(Row(statement: statement)); continue }
@@ -295,13 +311,55 @@ enum AgentLocalTokens {
     }
 
     private static func claudeFormat(roots: [URL], day: DateInterval) -> AgentTokenUsage? {
-        guard let files = recentFiles(in: roots, since: day.start) else { return nil }
+        // Transcripts are append-only, so only the tail written since midnight is read; a days-long session
+        // file can be hundreds of megabytes, which used to exceed the whole-file budget and hide the counts.
+        guard let files = recentFiles(in: roots, since: day.start, maximumBytes: nil) else { return nil }
         var largest: [String: Snapshot] = [:]
         for file in files {
-            guard let data = try? Data(contentsOf: file, options: .mappedIfSafe) else { return nil }
+            guard let data = dayTail(file, since: day.start) else { return nil }
             claudeTokens(data, day: day, into: &largest)
         }
         return usage(largest)
+    }
+
+    /// The end of an append-only file back to the last record written before `start`, growing the window
+    /// (4 MB, then ×4) until that boundary or the start of the file is reached. Lines are returned whole.
+    private static func dayTail(_ file: URL, since start: Date) -> Data? {
+        guard let handle = try? FileHandle(forReadingFrom: file) else { return nil }
+        defer { try? handle.close() }
+        guard let size = try? handle.seekToEnd() else { return nil }
+        var window: UInt64 = 4_000_000
+        while true {
+            let length = min(window, size)
+            guard (try? handle.seek(toOffset: size - length)) != nil, let data = try? handle.readToEnd() else {
+                return nil
+            }
+            guard length < size else { return data }
+            guard let newline = data.firstIndex(of: 10) else {
+                window = length * 4
+                continue
+            }
+            let tail = Data(data[data.index(after: newline)...])
+            if let earliest = firstTimestamp(in: tail), earliest < start { return tail }
+            window = length * 4
+        }
+    }
+
+    /// The timestamp of the first record in `data`, looking past a few leading lines that carry none.
+    private static func firstTimestamp(in data: Data) -> Date? {
+        var index = data.startIndex
+        for _ in 0..<16 where index < data.endIndex {
+            guard let newline = data[index...].firstIndex(of: 10) else { return nil }
+            let line = data[index..<newline]
+            index = data.index(after: newline)
+            // Skip a huge line rather than parsing it just to date the window.
+            guard line.count < 1_000_000,
+                let root = try? JSONSerialization.jsonObject(with: line) as? [String: Any],
+                let date = date(root["timestamp"])
+            else { continue }
+            return date
+        }
+        return nil
     }
 
     /// One API call can appear on several lines (one per content block, or as stream snapshots), so each
@@ -441,13 +499,92 @@ enum AgentLocalTokens {
 
     // MARK: - GitHub Copilot Chat (VS Code)
 
-    /// `workspaceStorage/<hash>/chatSessions/*.jsonl` plus empty-window sessions, without walking the
-    /// (often multi-GB) workspace folders themselves. VS Code can keep the same session in both places,
-    /// so each file name is read once, preferring the workspace copy.
+    /// Chat sessions saved by the Copilot Chat extension, with each request's token counts.
+    private static func copilotChatTokens(_ paths: AgentPaths, day: DateInterval) -> AgentTokenUsage? {
+        guard let files = copilotSessionFiles(paths, since: day.start) else { return nil }
+        var usage = AgentTokenUsage()
+        var folders: [URL: String?] = [:]
+        for file in files {
+            guard let data = try? Data(contentsOf: file, options: .mappedIfSafe) else { return nil }
+            // workspaceStorage/<hash>/chatSessions/<file>: the workspace's folder is in <hash>/workspace.json.
+            let workspace = file.deletingLastPathComponent().deletingLastPathComponent()
+            if folders[workspace] == nil { folders[workspace] = copilotWorkspaceFolder(workspace) }
+            usage = usage + copilotTokens(data, day: day, project: folders[workspace] ?? nil)
+        }
+        return usage
+    }
+
+    /// One agent-host usage log's model calls for `day`. Its `inputTokens` excludes cached input, like the
+    /// Copilot extension's own usage, so it maps straight onto fresh input.
+    static func agentHostTokens(_ data: Data, day: DateInterval) -> AgentTokenUsage {
+        var usage = AgentTokenUsage()
+        for line in lines(data) {
+            guard let date = date(line["ts"]), day.contains(date),
+                let input = count(line["inputTokens"]), let output = count(line["outputTokens"])
+            else { continue }
+            usage.add(
+                TokenTally(input: input, output: output, cacheRead: field(line, "cacheReadTokens")),
+                model: line["model"] as? String)
+        }
+        return usage
+    }
+
+    /// The agent that owns each agent-host usage log, from the editor's session index: keys are the chat URIs
+    /// that name the logs (sanitized the way VS Code names them), values the agent family before the colon
+    /// (`copilotcli`, `claude`, `codex`). Deleted chats still map their log, which outlives them.
+    static func agentHostOwners(_ database: URL) -> [String: String]? {
+        var owners: [String: String] = [:]
+        let ok = sqliteRows(
+            database: database,
+            sql: "SELECT chat_uri, owner_session_uri FROM chats_v2 WHERE chat_order = 0"
+        ) { row in
+            guard let chat = row.text(0), let owner = row.text(1), let family = owner.split(separator: ":").first
+            else { return }
+            owners[sanitizedChat(chat)] = String(family)
+        }
+        return ok ? owners : nil
+    }
+
+    /// VS Code's `chatUri.replace(/[^\w.-]/g, "_")`, which turns each chat URI into a usage log's file name.
+    static func sanitizedChat(_ chat: String) -> String {
+        String(
+            chat.map { character in
+                character.isASCII && (character.isLetter || character.isNumber || "._-".contains(character))
+                    ? character : "_"
+            })
+    }
+
+    /// VS Code's agent-host usage log: one JSON record per model call for sessions that run through the
+    /// editor's agent host. Copilot CLI sessions keep no per-request log elsewhere; Claude and Codex write
+    /// their own transcripts and rollouts, so their logs here are skipped to avoid counting them twice.
+    private static func copilotAgentHostTokens(_ paths: AgentPaths, day: DateInterval) -> AgentTokenUsage? {
+        let users = paths.vscodeUsers + paths.vscodeProfiles
+        var owners: [String: String] = [:]
+        for user in users {
+            if let found = agentHostOwners(user.appendingPathComponent("globalStorage/agent-host.db")) {
+                owners.merge(found) { $1 }
+            }
+        }
+        let roots = users.map { $0.appendingPathComponent("agentHostUsage", isDirectory: true) }
+        guard let files = recentFiles(in: roots, since: day.start) else { return nil }
+        var usage = AgentTokenUsage()
+        for file in files {
+            // An unindexed log (a session the editor has since forgotten) is still Copilot's, not unknown.
+            let chat = sanitizedChat(file.deletingPathExtension().lastPathComponent)
+            if let owner = owners[chat], owner == "claude" || owner == "codex" { continue }
+            guard let data = try? Data(contentsOf: file, options: .mappedIfSafe) else { return nil }
+            usage = usage + agentHostTokens(data, day: day)
+        }
+        return usage
+    }
+
+    /// `workspaceStorage/<hash>/chatSessions/*.jsonl` plus empty-window sessions in the default profile and
+    /// each named profile, without walking the (often multi-GB) workspace folders themselves. VS Code can
+    /// keep the same session in both places, so each file name is read once, preferring the workspace copy.
     private static func copilotSessionFiles(_ paths: AgentPaths, since start: Date) -> [URL]? {
         let manager = FileManager.default
         var folders: [URL] = []
-        for user in paths.vscodeUsers {
+        for user in paths.vscodeUsers + paths.vscodeProfiles {
             let storage = user.appendingPathComponent("workspaceStorage", isDirectory: true)
             for workspace in (try? manager.contentsOfDirectory(at: storage, includingPropertiesForKeys: nil)) ?? [] {
                 folders.append(workspace.appendingPathComponent("chatSessions", isDirectory: true))
@@ -509,6 +646,12 @@ enum AgentLocalTokens {
                 case "promptTokens": if let value = count(root["v"]) { requests[index].prompt = value }
                 case "completionTokens": if let value = count(root["v"]) { requests[index].completion = value }
                 case "modelId": if let value = root["v"] as? String { requests[index].model = value }
+                case "result":
+                    // The finished response names the model that actually answered (the request only says "auto").
+                    let metadata = (root["v"] as? [String: Any])?["metadata"] as? [String: Any]
+                    if let value = metadata?["resolvedModel"] as? String { requests[index].model = value }
+                    if let value = count(metadata?["promptTokens"]) { requests[index].prompt = value }
+                    if let value = count(metadata?["outputTokens"]) { requests[index].completion = value }
                 default: break
                 }
             case 2 where underRequests && path.count == 1:

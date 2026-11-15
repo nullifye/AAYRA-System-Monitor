@@ -75,7 +75,7 @@ enum AgentTool: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .claude: "~/.claude/projects (JSONL)"
         case .codex: "~/.codex/sessions (JSONL)"
-        case .copilot: "VS Code Copilot Chat sessions (workspaceStorage/*/chatSessions)"
+        case .copilot: "VS Code Copilot Chat and agent sessions (chatSessions, agentHostUsage)"
         case .openCode: "~/.local/share/opencode/opencode.db (SQLite, read-only)"
         case .gemini: "~/.gemini/tmp/*/chats"
         case .qwen: "~/.qwen/projects/*/chats (JSONL)"
@@ -99,7 +99,13 @@ enum AgentTool: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .claude: return [paths.claude]
         case .codex: return [paths.codex.appendingPathComponent("sessions")]
-        case .copilot: return paths.vscodeUsers.map { $0.appendingPathComponent("workspaceStorage") }
+        case .copilot:
+            return paths.vscodeUsers.flatMap {
+                [
+                    $0.appendingPathComponent("globalStorage/github.copilot-chat", isDirectory: true),
+                    $0.appendingPathComponent("agentHostUsage", isDirectory: true),
+                ]
+            }
         case .openCode: return [paths.data.appendingPathComponent("opencode")]
         case .gemini: return [paths.dot(".gemini").appendingPathComponent("tmp")]
         case .qwen: return [paths.dot(".qwen").appendingPathComponent("projects")]
@@ -245,6 +251,15 @@ struct AgentPaths: Sendable {
     }
     /// VS Code-family `User` folders where Copilot Chat stores sessions (stable, Insiders, VSCodium).
     var vscodeUsers: [URL] { ["Code", "Code - Insiders", "VSCodium"].map(editorUser) }
-    /// Every editor that can host the Cline, Roo Code and Kilo Code extensions.
-    var editorUsers: [URL] { vscodeUsers + ["Cursor", "Windsurf"].map(editorUser) }
+    /// Every editor that can host the Cline, Roo Code and Kilo Code extensions, including each named profile,
+    /// which keeps its extensions' `globalStorage` apart from the default profile's.
+    var editorUsers: [URL] { (vscodeUsers + ["Cursor", "Windsurf"].map(editorUser)).flatMap { [$0] + profiles(in: $0) } }
+    /// VS Code's named profiles, where empty-window Copilot sessions and extension storage also live.
+    var vscodeProfiles: [URL] { vscodeUsers.flatMap { profiles(in: $0) } }
+
+    private func profiles(in user: URL) -> [URL] {
+        let folder = user.appendingPathComponent("profiles", isDirectory: true)
+        return (try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: [.isDirectoryKey]))?
+            .filter { url in (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true } ?? []
+    }
 }

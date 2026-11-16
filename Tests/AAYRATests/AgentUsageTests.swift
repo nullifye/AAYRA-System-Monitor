@@ -416,7 +416,41 @@ struct AgentUsageTests {
             """
         #expect(sqlite3_exec(db, sql, nil, nil, nil) == SQLITE_OK)
         sqlite3_close(db)
-        #expect(AgentLocalTokens.openCodeTokens(database: url, day: today)?.total == 15)
+        #expect(
+            AgentLocalTokens.openCodeTokens(database: url, day: today)?.tally
+                == TokenTally(input: 1, output: 2, reasoning: 3, cacheRead: 4, cacheWrite: 5))
+    }
+
+    @Test func kiloReadsLegacyUsageWhenNewTableExistsAndDeduplicatesMigratedMessages() throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("aayra-kilo-mixed-\(UUID().uuidString).db")
+        defer { try? FileManager.default.removeItem(at: url) }
+        var db: OpaquePointer?
+        #expect(sqlite3_open(url.path, &db) == SQLITE_OK)
+        let handle = try #require(db)
+        defer { sqlite3_close(handle) }
+        let setup = """
+            CREATE TABLE session_message(id TEXT, session_id TEXT, type TEXT, time_created INTEGER, data TEXT);
+            CREATE TABLE session_v2(id TEXT, directory TEXT);
+            CREATE TABLE message(id TEXT, session_id TEXT, data TEXT);
+            INSERT INTO session_v2 VALUES('s','/work/project');
+            INSERT INTO message VALUES('1','s','{"role":"assistant","modelID":"m","time":{"created":\(nowMs)},"tokens":{"input":1,"output":2,"reasoning":3,"cache":{"read":4,"write":5}}}');
+            """
+        #expect(sqlite3_exec(handle, setup, nil, nil, nil) == SQLITE_OK)
+        let legacy = TokenTally(input: 1, output: 2, reasoning: 3, cacheRead: 4, cacheWrite: 5)
+        // The empty new table must not hide the legacy ledger (the actual Kilo layout on this Mac).
+        #expect(AgentLocalTokens.openCodeTokens(database: url, day: today)?.tally == legacy)
+        let migrate = """
+            INSERT INTO session_message VALUES('1','s','assistant',\(nowMs),'{"model":{"id":"m"},"tokens":{"input":10,"output":20,"reasoning":30,"cache":{"read":40,"write":50}}}');
+            INSERT INTO message VALUES('2','s','{"role":"assistant","modelID":"m","time":{"created":\(nowMs)},"tokens":{"input":1,"output":2,"reasoning":3,"cache":{"read":4,"write":5}}}');
+            INSERT INTO message VALUES('old','s','{"role":"assistant","modelID":"m","time":{"created":\(nowMs - 86_400_000)},"tokens":{"cache":{"read":999,"write":999}}}');
+            INSERT INTO message VALUES('user','s','{"role":"user","time":{"created":\(nowMs)},"tokens":{"cache":{"read":999}}}');
+            """
+        #expect(sqlite3_exec(handle, migrate, nil, nil, nil) == SQLITE_OK)
+        let usage = try #require(AgentLocalTokens.openCodeTokens(database: url, day: today))
+        let migrated = TokenTally(input: 10, output: 20, reasoning: 30, cacheRead: 40, cacheWrite: 50)
+        #expect(usage.tally == migrated + legacy)
+        #expect(usage.byModel["m"] == migrated + legacy)
+        #expect(usage.byProject["/work/project"] == migrated.total)
     }
 
     @Test func vscodeAgentHostUsageCountsModelCalls() {

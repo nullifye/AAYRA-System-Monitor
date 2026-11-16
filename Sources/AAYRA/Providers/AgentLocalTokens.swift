@@ -466,6 +466,8 @@ enum AgentLocalTokens {
     // MARK: - OpenCode schema (OpenCode, Kilo CLI)
 
     /// Current OpenCode keeps `session_message`; older OpenCode and Kilo keep `message` with times inside the JSON.
+    /// Both tables can coexist during migration (Kilo may leave the newer one empty). Read both, preferring
+    /// the newer copy of a message with the same ID, rather than treating an empty query as a complete ledger.
     /// Only assistant usage fields and model names are extracted; message text is never returned to Swift.
     static func openCodeTokens(database: URL, day: DateInterval) -> AgentTokenUsage? {
         func column(_ path: String) -> String {
@@ -491,16 +493,26 @@ enum AgentLocalTokens {
         let current = """
             WHERE m.type = 'assistant' AND m.time_created >= ?1 AND m.time_created < ?2 AND json_valid(m.data) GROUP BY 1, 2
             """
-        return run(
-            "\(select(folder: "s.directory")) FROM session_message m LEFT JOIN session_v2 s ON s.id = m.session_id \(current)")
-            ?? run("\(select(folder: "NULL")) FROM session_message m \(current)")
-            ?? run(
-                """
-                \(select(folder: "NULL")) FROM message m
-                WHERE json_valid(m.data) AND json_extract(m.data,'$.role') = 'assistant'
-                AND CAST(json_extract(m.data,'$.time.created') AS INTEGER) >= ?1
-                AND CAST(json_extract(m.data,'$.time.created') AS INTEGER) < ?2 GROUP BY 1, 2
-                """)
+        let legacy = """
+            WHERE json_valid(m.data) AND json_extract(m.data,'$.role') = 'assistant'
+            AND CAST(json_extract(m.data,'$.time.created') AS INTEGER) >= ?1
+            AND CAST(json_extract(m.data,'$.time.created') AS INTEGER) < ?2
+            """
+        let legacyUnmigrated = """
+            \(select(folder: "NULL")) FROM message m \(legacy)
+            AND NOT EXISTS (SELECT 1 FROM session_message newer WHERE newer.id = m.id AND newer.type = 'assistant')
+            GROUP BY 1, 2
+            """
+        let joined = """
+            \(select(folder: "s.directory")) FROM session_message m
+            LEFT JOIN session_v2 s ON s.id = m.session_id \(current)
+            """
+        let unjoined = "\(select(folder: "NULL")) FROM session_message m \(current)"
+        return run("\(joined) UNION ALL \(legacyUnmigrated)")
+            ?? run("\(unjoined) UNION ALL \(legacyUnmigrated)")
+            ?? run(joined)
+            ?? run(unjoined)
+            ?? run("\(select(folder: "NULL")) FROM message m \(legacy) GROUP BY 1, 2")
     }
 
     // MARK: - GitHub Copilot Chat (VS Code)

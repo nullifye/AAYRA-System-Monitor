@@ -19,7 +19,7 @@ The tooltip identifies the meaning. Context readings derived from a response are
 | Qwen Code | Latest saved assistant `usageMetadata.promptTokenCount` and `contextWindowSize` in project JSONL recordings. |
 | Cline | Latest task `api_req_started` metadata, including input, output and cache counts; model identity from `modelInfo`. Also reads CLI reply metrics. |
 | Roo Code | Latest task request metadata; cached input is already included in current `tokensIn` values. |
-| Kilo Code | Extension task metadata or the latest assistant usage metadata in the local SQLite session database. |
+| Kilo Code | Extension task metadata or the latest valid assistant usage in the current local SQLite session. Aborted and zero-usage pending replies do not imply an empty window; no valid response means unavailable, not 0%. Details include the response time and token breakdown. Auto-routing model capacity is a catalog estimate, not a confirmed underlying-model limit. |
 | Kimi | Native `StatusUpdate.context_usage` (0–1), `context_tokens`, and `max_context_tokens` in wire recordings. Partial updates preserve unchanged fields. |
 | Pi / Oh My Pi | Latest valid assistant usage on the saved active session branch, including cache tokens. Compaction clears pre-compaction readings until a new response is recorded. |
 | Cherry Studio | Saved agent transcripts and structured context snapshots when present in those recordings. |

@@ -118,6 +118,57 @@ struct AgentContextUsageTests {
         #expect(value.percent == nil)
     }
 
+    @Test func kiloDoesNotTreatAbortedOrPendingResponsesAsEmptyContext() {
+        let success = """
+            {"role":"assistant","modelID":"custom","contextWindow":10000,"tokens":{"input":1000,"output":100,"reasoning":50,"cache":{"read":5000,"write":500}}}
+            """
+        let aborted = """
+            {"role":"assistant","modelID":"custom","contextWindow":10000,"error":{"name":"MessageAbortedError"},"tokens":{"input":0,"output":0,"cache":{"read":0,"write":0}}}
+            """
+        let pending = """
+            {"role":"assistant","modelID":"custom","contextWindow":10000,"tokens":{"input":0,"output":0,"reasoning":0,"cache":{"read":0,"write":0}}}
+            """
+        let reading = AgentContextUsage.parse(data([success, aborted, pending].joined(separator: "\n")), tool: .kiloCode)
+        #expect(reading.percent == 66.5)
+        #expect(reading.lastResponse == TokenTally(input: 1000, output: 100, reasoning: 50, cacheRead: 5000, cacheWrite: 500))
+        #expect(AgentContextUsage.parse(data(aborted), tool: .kiloCode).percent == nil)
+        #expect(AgentContextUsage.parse(data(pending), tool: .kiloCode).percent == nil)
+    }
+
+    @Test func kiloContextUsesLastValidResponseButNeverAnotherSession() throws {
+        let home = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: home) }
+        let path = home.appendingPathComponent(".local/share/kilo/kilo.db")
+        try FileManager.default.createDirectory(at: path.deletingLastPathComponent(), withIntermediateDirectories: true)
+        var db: OpaquePointer?
+        #expect(sqlite3_open(path.path, &db) == SQLITE_OK)
+        let database = try #require(db)
+        defer { sqlite3_close(database) }
+        let now = Date()
+        let milliseconds = Int64(now.timeIntervalSince1970 * 1000)
+        let setup = """
+            CREATE TABLE session_message(session_id TEXT, type TEXT, data TEXT, time_created INTEGER);
+            CREATE TABLE message(session_id TEXT, data TEXT, time_created INTEGER);
+            INSERT INTO message VALUES('s','{"role":"assistant","modelID":"kilo-auto/free","providerID":"kilo","tokens":{"input":20000,"output":100,"reasoning":1000,"cache":{"read":100000,"write":0}}}',\(milliseconds - 3000));
+            INSERT INTO message VALUES('s','{"role":"assistant","error":{"name":"MessageAbortedError"},"tokens":{"input":0,"output":0}}',\(milliseconds - 2000));
+            INSERT INTO message VALUES('s','{"role":"assistant","tokens":{"input":0,"output":0}}',\(milliseconds - 1000));
+            """
+        #expect(sqlite3_exec(database, setup, nil, nil, nil) == SQLITE_OK)
+        let paths = AgentPaths(home: home, environment: [:])
+        let reading = try #require(AgentContextUsage.read(for: [.kiloCode], paths: paths, now: now)[.kiloCode])
+        #expect(reading.used == 121100)
+        #expect(reading.capacity == 256000)
+        #expect(reading.percent == Double(121100) / 256000 * 100)
+        #expect(reading.lastResponse?.cacheRead == 100000)
+        #expect(reading.observedAt == Date(timeIntervalSince1970: Double(milliseconds - 3000) / 1000))
+        // A new conversation with no response must not inherit the previous conversation's context.
+        let start = """
+            INSERT INTO message VALUES('new','{"role":"assistant","tokens":{"input":0,"output":0}}',\(milliseconds));
+            """
+        #expect(sqlite3_exec(database, start, nil, nil, nil) == SQLITE_OK)
+        #expect(AgentContextUsage.read(for: [.kiloCode], paths: paths, now: now)[.kiloCode]?.percent == nil)
+    }
+
     @Test func geminiQuotaHandlesFullZeroExpiredAndInvalidBuckets() {
         let now = Date(timeIntervalSince1970: 1_800_000_000)
         let result = AgentAccountUsage.parseGeminiQuota(

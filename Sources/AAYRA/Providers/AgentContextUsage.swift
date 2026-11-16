@@ -10,6 +10,7 @@ struct AgentContextReading: Equatable, Sendable {
     let model: String?
     let observedAt: Date?
     let detail: String
+    var lastResponse: TokenTally? = nil
 
     static let unavailable = Self(
         percent: nil, used: nil, capacity: nil, model: nil, observedAt: nil,
@@ -120,6 +121,7 @@ enum AgentContextUsage {
                 continue
             }
             if ["aborted", "error"].contains(message["stopReason"] as? String ?? "") { continue }
+            if message["error"] as? [String: Any] != nil { continue }
             if let value = message["model"] as? String, !value.isEmpty { model = value }
             if let value = message["modelID"] as? String { model = value }
             if let value = message["provider"] as? String ?? message["providerID"] as? String { provider = value }
@@ -128,6 +130,7 @@ enum AgentContextUsage {
             provider = info["providerId"] as? String ?? provider
             var explicitCapacity = count(record["contextWindowSize"] ?? info["contextWindow"] ?? message["contextWindow"])
             var used: Int64?
+            var lastResponse: TokenTally?
             if tool == .qwen, type == "assistant", let usage = record["usageMetadata"] as? [String: Any] {
                 used = count(usage["promptTokenCount"])
             } else if [AgentTool.cline, .rooCode, .kiloCode].contains(tool),
@@ -154,9 +157,14 @@ enum AgentContextUsage {
                     }
                 } else if let tokens = message["tokens"] as? [String: Any], let input = count(tokens["input"]) {
                     let cache = tokens["cache"] as? [String: Any] ?? [:]
-                    used =
-                        input + (count(tokens["output"]) ?? 0) + (count(tokens["reasoning"]) ?? 0)
-                        + (count(cache["read"]) ?? 0) + (count(cache["write"]) ?? 0)
+                    let tally = TokenTally(
+                        input: input, output: count(tokens["output"]) ?? 0, reasoning: count(tokens["reasoning"]) ?? 0,
+                        cacheRead: count(cache["read"]) ?? 0, cacheWrite: count(cache["write"]) ?? 0)
+                    // Kilo creates a zero-filled assistant placeholder before usage arrives. An interrupted
+                    // or pending request does not establish that the existing conversation is empty.
+                    if tool == .kiloCode, tally.total == 0 { continue }
+                    used = tally.total
+                    if tool == .kiloCode { lastResponse = tally }
                 }
             }
             guard let used else { continue }
@@ -171,6 +179,7 @@ enum AgentContextUsage {
                     percent: nil, used: used, capacity: nil, model: model, observedAt: time,
                     detail: "Context capacity unavailable for this model")
             }
+            reading?.lastResponse = lastResponse
         }
         return reading
             ?? .init(
@@ -293,17 +302,32 @@ enum AgentContextUsage {
             json_object('role','assistant','modelID',json_extract(data,'$.modelID'),
             'model',COALESCE(json_extract(data,'$.modelSelection.modelId'),json_extract(data,'$.model.id'),json_extract(data,'$.model')),
             'providerID',COALESCE(json_extract(data,'$.modelSelection.providerId'),json_extract(data,'$.providerID')),
-            'tokens',json_extract(data,'$.tokens'),'usage',json_extract(data,'$.usage'),
+             'tokens',json_extract(data,'$.tokens'),'usage',json_extract(data,'$.usage'),
+             'error',json_extract(data,'$.error'),
             'contextWindow',json_extract(data,'$.contextWindow'))
             """
         var queries: [String] = []
         for table in ["session_message", "message"] {
             let isAssistant = table == "session_message" ? "type = 'assistant'" : "json_extract(data,'$.role') = 'assistant'"
+            // Search past aborted/unfinished placeholders, but not into another conversation. The unscoped
+            // variant only supports older schemas without a session_id column.
+            let scope = """
+                AND session_id = (SELECT session_id FROM \(table)
+                WHERE json_valid(data) AND \(isAssistant) ORDER BY time_created DESC LIMIT 1)
+                """
+            if tool == .kiloCode {
+                queries.append(
+                    """
+                    SELECT \(projection), time_created FROM \(table)
+                    WHERE json_valid(data) AND \(isAssistant) \(scope)
+                    ORDER BY time_created DESC LIMIT 32
+                    """)
+            }
             queries.append(
                 """
                 SELECT \(projection), time_created FROM \(table)
                 WHERE json_valid(data) AND \(isAssistant)
-                ORDER BY time_created DESC LIMIT 1
+                ORDER BY time_created DESC LIMIT \(tool == .kiloCode ? 32 : 1)
                 """)
         }
         if tool == .zcode {
@@ -321,11 +345,17 @@ enum AgentContextUsage {
             var statement: OpaquePointer?
             guard sqlite3_prepare_v2(database, sql, -1, &statement, nil) == SQLITE_OK, let statement else { continue }
             defer { sqlite3_finalize(statement) }
-            guard sqlite3_step(statement) == SQLITE_ROW, let raw = sqlite3_column_text(statement, 0) else { continue }
-            let time = Date(timeIntervalSince1970: Double(sqlite3_column_int64(statement, 1)) / 1_000)
-            guard now.timeIntervalSince(time) <= maximumAge else { return nil }
-            let result = parse(Data(String(cString: raw).utf8), tool: tool, limits: limits, observedAt: time)
-            if result.used != nil { return result }
+            var sawRow = false
+            while sqlite3_step(statement) == SQLITE_ROW {
+                sawRow = true
+                guard let raw = sqlite3_column_text(statement, 0) else { continue }
+                let time = Date(timeIntervalSince1970: Double(sqlite3_column_int64(statement, 1)) / 1_000)
+                guard now.timeIntervalSince(time) <= maximumAge else { break }
+                let result = parse(Data(String(cString: raw).utf8), tool: tool, limits: limits, observedAt: time)
+                if result.used != nil { return result }
+            }
+            // A successfully prepared scoped query must not fall back to a different session.
+            if sawRow && sql.contains("AND session_id =") { return nil }
         }
         return nil
     }

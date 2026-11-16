@@ -858,6 +858,10 @@ private struct AgentDetail: View {
                         if let used = reading.used { DetailRow("Context tokens", used.formatted()) }
                         if let capacity = reading.capacity { DetailRow("Window capacity", capacity.formatted()) }
                         if let model = reading.model { DetailRow("Model", model) }
+                        if let checked = reading.observedAt {
+                            DetailRow("Observed", checked.formatted(date: .abbreviated, time: .shortened))
+                        }
+                        if tool == .kiloCode { KiloContextInfo(reading: reading) }
                         Text(reading.detail).font(.callout).foregroundStyle(.secondary)
                     } else {
                         EmptyRow(text: "Checking context…")
@@ -870,6 +874,33 @@ private struct AgentDetail: View {
     private func subtitle(_ usage: AgentTokenUsage?) -> String {
         if let usage { return "Today · \(usage.total.formatted()) tokens on this Mac" }
         return monitor.localTokensChecked ? "No local usage recorded today" : "Scanning local usage…"
+    }
+}
+
+/// Kilo's last recorded response is a window estimate, not its cumulative daily usage or a live reading.
+private struct KiloContextInfo: View {
+    let reading: AgentContextReading
+
+    var body: some View {
+        if let tally = reading.lastResponse {
+            DetailRow("Last input", tally.input.formatted())
+            DetailRow("Last cache read", tally.cacheRead.formatted())
+            DetailRow("Last cache write", tally.cacheWrite.formatted())
+            DetailRow("Last output", tally.output.formatted())
+            DetailRow("Last reasoning", tally.reasoning.formatted())
+        }
+        Text(
+            "Uses the last response with recorded usage; aborted or pending requests do not mean 0% context. "
+                + "This is separate from today's token total."
+        )
+        .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+        if reading.model?.hasPrefix("kilo-auto/") == true {
+            Text(
+                "Auto routing does not identify the underlying model here. "
+                    + "Window capacity comes from the model catalog and may differ from the routed model."
+            )
+            .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+        }
     }
 }
 
@@ -1036,9 +1067,11 @@ private struct OtherAgentsDetail: View {
                 DetailRow("Used", reading.percent.map { "\(Int($0.rounded()))%" } ?? "Unavailable")
                 if let used = reading.used { DetailRow("Context tokens", used.formatted()) }
                 if let capacity = reading.capacity { DetailRow("Window capacity", capacity.formatted()) }
+                if let model = reading.model { DetailRow("Model", model) }
                 if let checked = reading.observedAt {
                     DetailRow("Observed", checked.formatted(date: .abbreviated, time: .shortened))
                 }
+                if tool == .kiloCode { KiloContextInfo(reading: reading) }
                 Text(reading.detail).font(.callout).foregroundStyle(.secondary)
             }
         }

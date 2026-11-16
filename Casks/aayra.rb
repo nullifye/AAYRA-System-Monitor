@@ -1,7 +1,7 @@
 cask "aayra" do
   # `version` and `sha256` are filled in by scripts/update-cask.sh after each GitHub release.
-  version "1.10"
-  sha256 "2e62591f99fa34b649a39d59f0d4838b8a2acedd8395ede4ad8688c52d69fd8d"
+  version "1.11"
+  sha256 "1a2dd3d3212ff348eebd35cf251a6c1bfe6d526d2ae07b6f00b4e8f6818a6f8f"
 
   url "https://github.com/nullifye/AAYRA-System-Monitor/releases/download/v#{version}/AAYRA-#{version}.zip"
   name "AAYRA"

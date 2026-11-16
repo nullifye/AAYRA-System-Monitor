@@ -9,25 +9,16 @@ extension AppSettings.Key {
 /// 1m / 10m / 1h switch shown in a detail section's title row.
 struct HistoryRangePicker: View {
     @Binding var range: HistoryRange
-    #if DEBUG
-        @Environment(\.isSnapshot) private var isSnapshot
-    #else
-        private let isSnapshot = false
-    #endif
 
     var body: some View {
-        if isSnapshot {  // AppKit controls can't be drawn offscreen; show the choice as text
-            Text(range.title).font(.caption).foregroundStyle(.secondary)
-        } else {
-            Picker("Chart range", selection: $range) {
-                ForEach(HistoryRange.allCases) { Text($0.title).tag($0) }
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .controlSize(.small)
-            .fixedSize()
-            .help("How much history the chart shows")
+        Picker("Chart range", selection: $range) {
+            ForEach(HistoryRange.allCases) { Text($0.title).tag($0) }
         }
+        .pickerStyle(.segmented)
+        .labelsHidden()
+        .controlSize(.small)
+        .fixedSize()
+        .help("How much history the chart shows")
     }
 }
 

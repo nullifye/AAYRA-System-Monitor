@@ -109,7 +109,7 @@ struct StorageDetail: View {
                     if let capacity = info.capacityBytes { DetailRow("Capacity", Format.diskBytes(capacity)) }
                     if let interconnect = info.interconnect { DetailRow("Interface", interconnect) }
                     if let bsd = info.bsdName { DetailRow("Device", bsd) }
-                    if let serial = info.serial { DetailRow("Serial", serial, placeholder: "0123456789ABCDEF") }
+                    if let serial = info.serial { DetailRow("Serial", serial) }
                     if let firmware = info.firmware { DetailRow("Firmware", firmware) }
                 }
                 DetailSection("Health") {

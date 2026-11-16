@@ -86,12 +86,6 @@ extension Card where Icon == IconBadge {
     }
 }
 
-extension EnvironmentValues {
-    /// On only for offscreen debug renders (README screenshots): they can't draw glass, materials
-    /// or AppKit controls, and personal identifiers are swapped for placeholders.
-    @Entry var isSnapshot = false
-}
-
 /// Two card surfaces:
 /// - floating: a Notification Center–style tile that hovers over the desktop on its own. Liquid Glass
 ///   on macOS 26+ (glass over content, as Apple intends), a blurred material with a soft shadow before.
@@ -101,28 +95,17 @@ private struct CardBackground: ViewModifier {
     var radius: CGFloat
     var floating: Bool
     @Environment(\.colorScheme) private var scheme
-    #if DEBUG
-        @Environment(\.isSnapshot) private var isSnapshot
-    #else
-        private let isSnapshot = false  // screenshots are a debug-only feature
-    #endif
 
     func body(content: Content) -> some View {
         let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
         if floating {
-            if #available(macOS 26, *), !isSnapshot {
+            if #available(macOS 26, *) {
                 content.glassEffect(.regular, in: shape)
             } else {
                 content.background {
-                    Group {
-                        if !isSnapshot {
-                            shape.fill(.regularMaterial)
-                        } else {
-                            shape.fill(Color(nsColor: .windowBackgroundColor))
-                        }
-                    }
-                    .overlay(shape.strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5))
-                    .shadow(color: .black.opacity(0.18), radius: 8, y: 3)
+                    shape.fill(.regularMaterial)
+                        .overlay(shape.strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5))
+                        .shadow(color: .black.opacity(0.18), radius: 8, y: 3)
                 }
             }
         } else {
@@ -396,11 +379,6 @@ struct DetailPopover<Detail: View>: ViewModifier {
     @State private var isHovering = false
     @State private var closedAt = Date.distantPast
     @State private var anchor: NSView?
-    #if DEBUG
-        @Environment(\.isSnapshot) private var isSnapshot
-    #else
-        private let isSnapshot = false
-    #endif
 
     private var isOpen: Bool { selection == kind }
 
@@ -430,11 +408,9 @@ struct DetailPopover<Detail: View>: ViewModifier {
             .animation(.easeOut(duration: 0.12), value: isHovering)
             .animation(.easeOut(duration: 0.12), value: isOpen)
             .background {
-                if !isSnapshot {  // AppKit views can't be drawn offscreen
-                    PopoverAnchor { view in
-                        anchor = view
-                        if isOpen { present() }  // clicked before the anchor existed
-                    }
+                PopoverAnchor { view in
+                    anchor = view
+                    if isOpen { present() }  // clicked before the anchor existed
                 }
             }
             .onChange(of: isOpen) { _, open in

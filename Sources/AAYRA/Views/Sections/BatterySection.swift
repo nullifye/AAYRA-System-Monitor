@@ -109,7 +109,7 @@ struct BatteryDetail: View {
             }
             DetailRow("Assembled by", battery.packManufacturer ?? "Unknown")
             DetailRow("Cells by", battery.manufacturer ?? "Unknown")
-            if let serial = battery.serial { DetailRow("Serial", serial, placeholder: "F8Y0000000000000A") }
+            if let serial = battery.serial { DetailRow("Serial", serial) }
         }
     }
 

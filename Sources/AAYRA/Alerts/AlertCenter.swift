@@ -20,7 +20,7 @@ final class AlertCenter: NSObject, UNUserNotificationCenterDelegate {
 
     private var rules = AlertRules()
     private let processes = ProcessSampler()  // to name the app behind high CPU or memory
-    /// UserNotifications needs a real app bundle; unbundled debug runs (e.g. `--render`) skip it.
+    /// UserNotifications needs a real app bundle; unbundled debug runs skip it.
     private let canNotify = Bundle.main.bundleIdentifier != nil
 
     override private init() {

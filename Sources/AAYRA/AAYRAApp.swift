@@ -7,10 +7,6 @@ enum AAYRAMain {
         #if DEBUG  // developer tools, left out of release builds to keep the app small
             let args = CommandLine.arguments
             if args.contains("--dump") { dumpStats(); return }
-            if let i = args.firstIndex(of: "--render"), i + 1 < args.count {
-                _ = NSApplication.shared
-                DebugRender.run(outputDirectory: args[i + 1]); return
-            }
         #endif
         let app = NSApplication.shared
         let delegate = AppDelegate()

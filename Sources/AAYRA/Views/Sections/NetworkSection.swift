@@ -7,11 +7,6 @@ struct NetworkCard: View {
     let monitor: SystemMonitor
     @State private var copiedValue: String?
     @AppStorage(AppSettings.Key.fetchPublicIP) private var fetchPublicIP = true
-    #if DEBUG
-        @Environment(\.isSnapshot) private var isSnapshot
-    #else
-        private let isSnapshot = false  // screenshots are a debug-only feature
-    #endif
 
     var body: some View {
         let net = monitor.network
@@ -21,7 +16,7 @@ struct NetworkCard: View {
                     .font(.body.weight(.semibold))
                     .lineLimit(1)
                     .truncationMode(.middle)
-                if showsPermissionButton && !isSnapshot {
+                if showsPermissionButton {
                     Button {
                         monitor.requestWiFiNameAccess()
                     } label: {
@@ -53,7 +48,7 @@ struct NetworkCard: View {
         } details: {
             DualSparkline(download: monitor.downloadHistory, upload: monitor.uploadHistory, height: 22)
             HStack(spacing: 6) {
-                address("Local", isSnapshot ? "192.168.1.20" : net.localIPv4 ?? net.localIPv6)
+                address("Local", net.localIPv4 ?? net.localIPv6)
                 Spacer(minLength: 4)
                 if fetchPublicIP { publicAddress }
             }
@@ -63,7 +58,7 @@ struct NetworkCard: View {
     private var publicAddress: some View {
         HStack(spacing: 2) {
             address(
-                "Public", isSnapshot ? "203.0.113.42" : monitor.publicIP,
+                "Public", monitor.publicIP,
                 loading: monitor.isFetchingPublicIP, alignment: .trailing)
             Button {
                 monitor.refreshPublicIP(force: true)
@@ -79,7 +74,6 @@ struct NetworkCard: View {
     private var title: String {
         let net = monitor.network
         guard net.isConnected else { return "Offline" }
-        if isSnapshot, monitor.wifiName != nil { return "Home Wi-Fi" }
         return monitor.wifiName ?? net.interfaceKind
     }
 
@@ -182,11 +176,11 @@ struct NetworkDetail: View {
                     DetailRow("Interface", "\(net.interfaceKind) (\(interface))")
                     if let vpn = net.vpnInterface {
                         DetailRow("VPN", "Connected (\(vpn))", dot: .green)
-                        if let address = net.vpnAddress { DetailRow("VPN address", address, placeholder: "10.8.0.2") }
+                        if let address = net.vpnAddress { DetailRow("VPN address", address) }
                     } else {
                         DetailRow("VPN", "Off")
                     }
-                    if let mac = info.macAddress { DetailRow("MAC address", mac, placeholder: "a1:b2:c3:d4:e5:f6") }
+                    if let mac = info.macAddress { DetailRow("MAC address", mac) }
                     if info.wifi == nil, let speed = info.linkSpeedMbps {
                         DetailRow("Link speed", speed >= 1000 ? "\(speed / 1000) Gbps" : "\(speed) Mbps")
                     }
@@ -199,8 +193,8 @@ struct NetworkDetail: View {
             if net.isConnected {
                 if let wifi = info.wifi {
                     DetailSection("Wi-Fi") {
-                        DetailRow("Network", monitor.wifiName ?? "—", placeholder: "Home Wi-Fi")
-                        if let bssid = wifi.bssid { DetailRow("BSSID", bssid, placeholder: "0a:1b:2c:3d:4e:5f") }
+                        DetailRow("Network", monitor.wifiName ?? "—")
+                        if let bssid = wifi.bssid { DetailRow("BSSID", bssid) }
                         if let standard = wifi.standard { DetailRow("Standard", standard) }
                         if let rssi = wifi.rssi {
                             DetailRow(
@@ -218,17 +212,17 @@ struct NetworkDetail: View {
                     }
                 }
                 DetailSection("Addresses") {
-                    if let v4 = net.localIPv4 { DetailRow("IPv4", v4, placeholder: "192.168.1.20") }
+                    if let v4 = net.localIPv4 { DetailRow("IPv4", v4) }
                     if let mask = info.subnetMask { DetailRow("Subnet mask", mask) }
-                    if let v6 = net.localIPv6 { DetailRow("IPv6", v6, placeholder: "2001:db8::20") }
-                    if let router = info.router { DetailRow("Router", router, placeholder: "192.168.1.1") }
+                    if let v6 = net.localIPv6 { DetailRow("IPv6", v6) }
+                    if let router = info.router { DetailRow("Router", router) }
                     ForEach(Array(info.dnsServers.enumerated()), id: \.offset) { index, server in
-                        DetailRow(index == 0 ? "DNS" : "", server, placeholder: index == 0 ? "1.1.1.1" : "1.0.0.1")
+                        DetailRow(index == 0 ? "DNS" : "", server)
                     }
                     if !info.searchDomains.isEmpty {
-                        DetailRow("Search domains", info.searchDomains.joined(separator: ", "), placeholder: "home")
+                        DetailRow("Search domains", info.searchDomains.joined(separator: ", "))
                     }
-                    DetailRow("Public IP", monitor.publicIP ?? "—", placeholder: "203.0.113.42")
+                    DetailRow("Public IP", monitor.publicIP ?? "—")
                 }
             } else {
                 DetailSection("Status") { EmptyRow(text: "No active network interface") }

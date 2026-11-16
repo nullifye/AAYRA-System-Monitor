@@ -136,35 +136,6 @@ final class AgentUsageMonitor {
         }
     }
 
-    #if DEBUG
-        /// Snapshot data for `--render`: sample allowances (no Keychain or network) and real local token counts.
-        func loadSnapshot(now: Date = Date()) {
-            detected = AgentTool.detectedOnThisMac()
-            choices = [:]  // the default selection, whatever is saved
-            let snapshotTools = Set(shownTools).union([.openCode])
-            localTokens = AgentLocalTokens.today(for: snapshotTools, now: now)
-            contextReadings = AgentContextUsage.read(for: snapshotTools, now: now)
-            localTokensChecked = true
-            let reset = now.addingTimeInterval(3 * 3_600)
-            func sample(_ kind: AgentUsageStatus.Kind, _ left: Double) -> AgentUsageStatus {
-                .init(
-                    kind: kind,
-                    allowances: [
-                        .init(name: "5-hour", remaining: "", resetsAt: reset, remainingPercent: left),
-                        .init(
-                            name: "Weekly", remaining: "", resetsAt: reset.addingTimeInterval(3 * 86_400), remainingPercent: 64),
-                    ], detail: "Sample allowance", checkedAt: now)
-            }
-            statuses = [
-                .claude: sample(.claude, 72), .codex: sample(.codex, 41), .copilot: sample(.copilot, 88),
-                .openCode: sample(.openCode, 58),
-            ]
-            perchThreads = PerchContext.threads()
-            perchChecked = true
-            perchCheckedAt = Date()
-        }
-    #endif
-
     nonisolated private static func account(_ kind: AgentUsageStatus.Kind) async -> AgentUsageStatus {
         switch kind {
         case .claude: await AgentAccountUsage.claude()
@@ -379,12 +350,10 @@ private struct AgentUsageView: View {
     @State private var contentHeight: CGFloat = 0
     @State private var openDetail: DetailKind?
     @State var choosing = false
-    /// Off only for offscreen `--render` snapshots, which can't draw scroll view contents.
-    var scrolls = true
     @State private var shownBeforeChoosing: [AgentTool] = []
 
     var body: some View {
-        if scrolls && AgentUsageLayout.needsScroll(content: contentHeight, available: maxHeight) {
+        if AgentUsageLayout.needsScroll(content: contentHeight, available: maxHeight) {
             scrollingContent
         } else {
             // Laid out exactly like the hardware panel: no scroll view, so nothing is drawn behind the cards.
@@ -505,41 +474,6 @@ private struct AgentUsageView: View {
         .cardBackground(floating: true)
     }
 }
-
-#if DEBUG
-    /// `--render` entry point: the panel as shown, and with the agent list open.
-    @MainActor
-    enum AgentUsageSnapshot {
-        static func views() -> [(String, AnyView)] {
-            let monitor = AgentUsageMonitor()
-            monitor.loadSnapshot()
-            var views = [false, true].map { choosing in
-                let view = AgentUsageView(
-                    monitor: monitor, maxHeight: 2_000, onHeightChange: { _ in }, choosing: choosing, scrolls: false)
-                return (choosing ? "agents-choose" : "agents", AnyView(view))
-            }
-            let detail = AgentDetail(tool: .claude, monitor: monitor)
-                .background(Color(nsColor: .windowBackgroundColor), in: RoundedRectangle(cornerRadius: 16))
-                .padding(28)
-            views.append(("agents-detail", AnyView(detail)))
-            let openCode = AgentDetail(tool: .openCode, monitor: monitor)
-                .background(Color(nsColor: .windowBackgroundColor), in: RoundedRectangle(cornerRadius: 16))
-                .padding(28)
-            views.append(("agents-opencode-detail", AnyView(openCode)))
-            let openCodeCard = AgentProviderCard(
-                tool: .openCode, status: monitor.status(for: .openCode), localTokens: monitor.localTokens[.openCode],
-                tokensChecked: true, context: monitor.contextReadings[.openCode]
-            )
-            .frame(width: 370).padding(12)
-            views.append(("agents-opencode-card", AnyView(openCodeCard)))
-            let perch = ContextFillDetail(tool: .perch, monitor: monitor)
-                .background(Color(nsColor: .windowBackgroundColor), in: RoundedRectangle(cornerRadius: 16))
-                .padding(28)
-            views.append(("agents-perch", AnyView(perch)))
-            return views
-        }
-    }
-#endif
 
 /// Built on the same `Card` as CPU, Memory and Storage: icon on the left, title with the headline number
 /// (the tightest allowance), then a bar and line per window. Click opens its detail panel.

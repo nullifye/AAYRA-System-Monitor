@@ -33,25 +33,14 @@ struct DetailPanel<Leading: View, Trailing: View>: View {
     @ViewBuilder var leading: () -> Leading
     @ViewBuilder var trailing: () -> Trailing
 
-    #if DEBUG
-        @Environment(\.isSnapshot) private var isSnapshot
-    #else
-        private let isSnapshot = false
-    #endif
-
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             header
-            if isSnapshot {
-                columns  // offscreen screenshots can't draw scroll views
-            } else {
-                // The columns always sit in one scroll view, so expanding rows never rebuilds them (which
-                // would collapse them again). It takes the content's natural height up to the room on
-                // screen, and only scrolls, below a header that stays put, when the content is taller.
-                ScrollView(.vertical) { columns }
-                    .frame(maxHeight: maxColumnsHeight)
-                    .scrollBounceBehavior(.basedOnSize)
-            }
+            // Keep the columns in one scroll view so expanding rows never rebuilds them. The header
+            // stays put, and scrolling is only needed when the content outgrows the available room.
+            ScrollView(.vertical) { columns }
+                .frame(maxHeight: maxColumnsHeight)
+                .scrollBounceBehavior(.basedOnSize)
         }
         .padding(16)
         .frame(width: Metrics.detailWidth)
@@ -72,17 +61,15 @@ struct DetailPanel<Leading: View, Trailing: View>: View {
                 }
             }
             Spacer(minLength: 0)
-            if !isSnapshot {  // AppKit controls can't be drawn in offscreen screenshots
-                HStack(spacing: 6) {
-                    ForEach(actions.indices, id: \.self) { index in
-                        let action = actions[index]
-                        Button {
-                            action.perform()
-                        } label: {
-                            Label(action.title, systemImage: action.symbol)
-                        }
-                        .buttonStyle(.bordered)
+            HStack(spacing: 6) {
+                ForEach(actions.indices, id: \.self) { index in
+                    let action = actions[index]
+                    Button {
+                        action.perform()
+                    } label: {
+                        Label(action.title, systemImage: action.symbol)
                     }
+                    .buttonStyle(.bordered)
                 }
             }
         }
@@ -158,30 +145,10 @@ struct DetailRow: View {
     let label: String
     let value: String
     var dot: Color?
-    #if DEBUG
-        /// Shown instead of `value` in screenshots, for personal identifiers (serials, addresses).
-        var placeholder: String?
-    #endif
-    #if DEBUG
-        @Environment(\.isSnapshot) private var isSnapshot
-    #else
-        private let isSnapshot = false  // screenshots are a debug-only feature
-    #endif
-
-    init(_ label: String, _ value: String, dot: Color? = nil, placeholder: String? = nil) {
+    init(_ label: String, _ value: String, dot: Color? = nil) {
         self.label = label
         self.value = value
         self.dot = dot
-        #if DEBUG
-            self.placeholder = placeholder
-        #endif
-    }
-
-    private var shownValue: String {
-        #if DEBUG
-            if isSnapshot, let placeholder { return placeholder }
-        #endif
-        return value
     }
 
     var body: some View {
@@ -197,7 +164,7 @@ struct DetailRow: View {
                 if let dot {
                     Circle().fill(dot).frame(width: 7, height: 7)
                 }
-                Text(shownValue)
+                Text(value)
                     .monospacedDigit()
                     .lineLimit(1)
                     .truncationMode(.middle)

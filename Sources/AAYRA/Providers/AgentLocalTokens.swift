@@ -476,6 +476,26 @@ enum AgentLocalTokens {
     /// the newer copy of a message with the same ID, rather than treating an empty query as a complete ledger.
     /// Only assistant usage fields and model names are extracted; message text is never returned to Swift.
     static func openCodeTokens(database: URL, day: DateInterval) -> AgentTokenUsage? {
+        func columns(_ table: String) -> Set<String> {
+            var names = Set<String>()
+            _ = sqliteRows(database: database, sql: "PRAGMA table_info(\(table))") { row in
+                if let name = row.text(1) { names.insert(name) }
+            }
+            return names
+        }
+        let sessionTables = ["session_v2", "session"].filter { columns($0).isSuperset(of: ["id", "directory"]) }
+        func folder(messageTable: String) -> String {
+            var sources: [String] = []
+            if columns(messageTable).contains("session_id") {
+                let preferred = messageTable == "message" ? Array(sessionTables.reversed()) : sessionTables
+                sources = preferred.map { "(SELECT NULLIF(s.directory,'') FROM \($0) s WHERE s.id = m.session_id)" }
+            }
+            // Kilo also records a per-message cwd; retain it when session metadata has been pruned.
+            sources.append("json_extract(m.data,'$.path.cwd')")
+            return sources.count == 1 ? sources[0] : "COALESCE(\(sources.joined(separator: ",")))"
+        }
+        let currentFolder = folder(messageTable: "session_message")
+        let legacyFolder = folder(messageTable: "message")
         func column(_ path: String) -> String {
             "COALESCE(SUM(MAX(0, COALESCE(CAST(json_extract(m.data,'$.tokens.\(path)') AS INTEGER), 0))), 0)"
         }
@@ -505,20 +525,14 @@ enum AgentLocalTokens {
             AND CAST(json_extract(m.data,'$.time.created') AS INTEGER) < ?2
             """
         let legacyUnmigrated = """
-            \(select(folder: "NULL")) FROM message m \(legacy)
+            \(select(folder: legacyFolder)) FROM message m \(legacy)
             AND NOT EXISTS (SELECT 1 FROM session_message newer WHERE newer.id = m.id AND newer.type = 'assistant')
             GROUP BY 1, 2
             """
-        let joined = """
-            \(select(folder: "s.directory")) FROM session_message m
-            LEFT JOIN session_v2 s ON s.id = m.session_id \(current)
-            """
-        let unjoined = "\(select(folder: "NULL")) FROM session_message m \(current)"
-        return run("\(joined) UNION ALL \(legacyUnmigrated)")
-            ?? run("\(unjoined) UNION ALL \(legacyUnmigrated)")
-            ?? run(joined)
-            ?? run(unjoined)
-            ?? run("\(select(folder: "NULL")) FROM message m \(legacy) GROUP BY 1, 2")
+        let currentQuery = "\(select(folder: currentFolder)) FROM session_message m \(current)"
+        return run("\(currentQuery) UNION ALL \(legacyUnmigrated)")
+            ?? run(currentQuery)
+            ?? run("\(select(folder: legacyFolder)) FROM message m \(legacy) GROUP BY 1, 2")
     }
 
     // MARK: - GitHub Copilot Chat (VS Code)

@@ -450,7 +450,53 @@ struct AgentUsageTests {
         let migrated = TokenTally(input: 10, output: 20, reasoning: 30, cacheRead: 40, cacheWrite: 50)
         #expect(usage.tally == migrated + legacy)
         #expect(usage.byModel["m"] == migrated + legacy)
-        #expect(usage.byProject["/work/project"] == migrated.total)
+        #expect(usage.byProject["/work/project"] == migrated.total + legacy.total)
+    }
+
+    @Test func kiloProjectsUseSessionDirectoriesAndFallBackToRecordedWorkingFolder() throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("aayra-kilo-projects-\(UUID().uuidString).db")
+        defer { try? FileManager.default.removeItem(at: url) }
+        var db: OpaquePointer?
+        #expect(sqlite3_open(url.path, &db) == SQLITE_OK)
+        let handle = try #require(db)
+        defer { sqlite3_close(handle) }
+        let setup = """
+            CREATE TABLE session_message(id TEXT, session_id TEXT, type TEXT, time_created INTEGER, data TEXT);
+            CREATE TABLE session(id TEXT PRIMARY KEY, directory TEXT);
+            CREATE TABLE message(id TEXT, session_id TEXT, data TEXT);
+            INSERT INTO session VALUES('a','/work/app');
+            INSERT INTO session VALUES('b','/work/site');
+            INSERT INTO message VALUES('1','a','{"role":"assistant","time":{"created":\(nowMs)},"path":{"cwd":"/work/app/subfolder"},"tokens":{"input":10,"cache":{"read":20,"write":5}}}');
+            INSERT INTO message VALUES('2','b','{"role":"assistant","time":{"created":\(nowMs)},"tokens":{"output":7}}');
+            INSERT INTO message VALUES('3','deleted','{"role":"assistant","time":{"created":\(nowMs)},"path":{"cwd":"file:///work/orphan/"},"tokens":{"input":3}}');
+            INSERT INTO message VALUES('4','missing','{"role":"assistant","time":{"created":\(nowMs)},"path":{"cwd":"relative/path"},"tokens":{"input":2}}');
+            INSERT INTO message VALUES('5','a','{"role":"assistant","time":{"created":\(nowMs - 86_400_000)},"tokens":{"input":999}}');
+            INSERT INTO message VALUES('6','b','{"role":"user","time":{"created":\(nowMs)},"tokens":{"input":999}}');
+            """
+        #expect(sqlite3_exec(handle, setup, nil, nil, nil) == SQLITE_OK)
+        let usage = try #require(AgentLocalTokens.openCodeTokens(database: url, day: today))
+        #expect(AgentTool.kiloCode.recordsProjects)
+        #expect(usage.byProject == ["/work/app": 35, "/work/site": 7, "/work/orphan": 3])
+        #expect(usage.total == 47)
+        #expect(usage.tally.cacheRead == 20)
+        #expect(usage.tally.cacheWrite == 5)
+    }
+
+    @Test func projectFallbackDoesNotRequireAnySessionTable() throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("aayra-project-cwd-\(UUID().uuidString).db")
+        defer { try? FileManager.default.removeItem(at: url) }
+        var db: OpaquePointer?
+        #expect(sqlite3_open(url.path, &db) == SQLITE_OK)
+        let handle = try #require(db)
+        defer { sqlite3_close(handle) }
+        let setup = """
+            CREATE TABLE message(data TEXT);
+            INSERT INTO message VALUES('{"role":"assistant","time":{"created":\(nowMs)},"path":{"cwd":"/work/recovered"},"tokens":{"input":4,"cache":{"read":6}}}');
+            """
+        #expect(sqlite3_exec(handle, setup, nil, nil, nil) == SQLITE_OK)
+        let usage = try #require(AgentLocalTokens.openCodeTokens(database: url, day: today))
+        #expect(usage.byProject == ["/work/recovered": 10])
+        #expect(usage.total == 10)
     }
 
     @Test func vscodeAgentHostUsageCountsModelCalls() {

@@ -68,7 +68,7 @@ enum AgentTool: String, CaseIterable, Identifiable, Sendable {
     }
 
     /// Whether the agent's local records say which folder it worked in.
-    var recordsProjects: Bool { [.claude, .codex, .copilot, .openCode].contains(self) }
+    var recordsProjects: Bool { [.claude, .codex, .copilot, .openCode, .kiloCode].contains(self) }
 
     /// Where the local token counts come from, shown as a tooltip.
     var dataHint: String {

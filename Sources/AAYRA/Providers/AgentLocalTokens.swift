@@ -16,6 +16,12 @@ struct TokenTally: Equatable, Sendable {
 
     var total: Int64 { input + output + reasoning + cacheRead + cacheWrite + unclassified }
 
+    /// Cache reads as a share of all prompt input, not output, reasoning, or an inferred cost saving.
+    var cacheReusePercent: Double? {
+        let prompt = input + cacheRead + cacheWrite
+        return prompt > 0 ? Double(cacheRead) / Double(prompt) * 100 : nil
+    }
+
     static func + (lhs: TokenTally, rhs: TokenTally) -> TokenTally {
         TokenTally(
             input: lhs.input + rhs.input, output: lhs.output + rhs.output, reasoning: lhs.reasoning + rhs.reasoning,
@@ -233,7 +239,7 @@ enum AgentLocalTokens {
 
     /// Runs `sql` read-only, binding the day's start and end (ms) to ?1 and ?2 when one is given. False if
     /// the database or table is missing, so callers can report "unknown" rather than zero.
-    private static func sqliteRows(database: URL, day: DateInterval? = nil, sql: String, row: (Row) -> Void) -> Bool {
+    static func sqliteRows(database: URL, day: DateInterval? = nil, sql: String, row: (Row) -> Void) -> Bool {
         var produced = false
         let ok = query(database: database, day: day, immutable: false, sql: sql) { found in
             produced = true

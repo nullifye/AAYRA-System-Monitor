@@ -11,6 +11,7 @@ struct AgentContextReading: Equatable, Sendable {
     let observedAt: Date?
     let detail: String
     var lastResponse: TokenTally? = nil
+    var provider: String? = nil
 
     static let unavailable = Self(
         percent: nil, used: nil, capacity: nil, model: nil, observedAt: nil,
@@ -29,7 +30,9 @@ enum AgentContextUsage {
         for tool in tools where tool.readsLocalContext {
             let configured = configuredLimits(tool, paths: paths)
             var reading: AgentContextReading?
-            if tool == .kiloCode || tool == .zcode {
+            if tool == .openCode {
+                reading = OpenCodeContext.read(database: paths.data.appendingPathComponent("opencode/opencode.db"), now: now)
+            } else if tool == .kiloCode || tool == .zcode {
                 let database =
                     tool == .kiloCode
                     ? paths.data.appendingPathComponent("kilo/kilo.db")
@@ -123,8 +126,11 @@ enum AgentContextUsage {
             if ["aborted", "error"].contains(message["stopReason"] as? String ?? "") { continue }
             if message["error"] as? [String: Any] != nil { continue }
             if let value = message["model"] as? String, !value.isEmpty { model = value }
+            let modelObject = message["model"] as? [String: Any]
+            if let value = modelObject?["id"] as? String { model = value }
             if let value = message["modelID"] as? String { model = value }
             if let value = message["provider"] as? String ?? message["providerID"] as? String { provider = value }
+            if let value = modelObject?["providerID"] as? String { provider = value }
             let info = record["modelInfo"] as? [String: Any] ?? message["modelInfo"] as? [String: Any] ?? [:]
             model = (info["modelId"] ?? info["id"]) as? String ?? model
             provider = info["providerId"] as? String ?? provider
@@ -162,9 +168,9 @@ enum AgentContextUsage {
                         cacheRead: count(cache["read"]) ?? 0, cacheWrite: count(cache["write"]) ?? 0)
                     // Kilo creates a zero-filled assistant placeholder before usage arrives. An interrupted
                     // or pending request does not establish that the existing conversation is empty.
-                    if tool == .kiloCode, tally.total == 0 { continue }
+                    if [.kiloCode, .openCode].contains(tool), tally.total == 0 { continue }
                     used = tally.total
-                    if tool == .kiloCode { lastResponse = tally }
+                    if [.kiloCode, .openCode].contains(tool) { lastResponse = tally }
                 }
             }
             guard let used else { continue }
@@ -180,6 +186,7 @@ enum AgentContextUsage {
                     detail: "Context capacity unavailable for this model")
             }
             reading?.lastResponse = lastResponse
+            reading?.provider = provider
         }
         return reading
             ?? .init(
@@ -408,7 +415,7 @@ enum AgentContextModels {
 }
 
 extension AgentTool {
-    var readsLocalContext: Bool { menuBarPercentageMeaning == .used && self != .perch }
+    var readsLocalContext: Bool { self == .openCode || (menuBarPercentageMeaning == .used && self != .perch) }
 
     fileprivate func contextRoots(_ paths: AgentPaths) -> [URL] {
         switch self {

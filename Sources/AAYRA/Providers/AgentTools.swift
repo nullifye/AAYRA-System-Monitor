@@ -149,6 +149,15 @@ enum AgentTool: String, CaseIterable, Identifiable, Sendable {
 
     var supportsMenuBarPercent: Bool { menuBarPercentageMeaning != nil }
 
+    /// Account allowance and context fill are different quantities; never substitute one for the other.
+    func displayedPercent(allowance: Double?, context: Double?) -> Double? {
+        switch menuBarPercentageMeaning {
+        case .remaining: allowance
+        case .used: context
+        case nil: nil
+        }
+    }
+
     /// Compact labels for every supported agent, independent of which agents this Mac has installed.
     var menuBarName: String {
         switch self {

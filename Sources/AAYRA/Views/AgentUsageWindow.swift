@@ -89,7 +89,8 @@ final class AgentUsageMonitor {
         // Unticked agents are skipped entirely: no files scanned, no sign-in read, no request sent.
         let shown = Set(menuBarOnly ? menuBarTools : shownTools)
         let kinds = shown.compactMap(\.account)
-        let contextTask = Task.detached(priority: .utility) { AgentContextUsage.read(for: shown) }
+        let contextTools = Set(shown.filter { !menuBarOnly || $0.menuBarPercentageMeaning == .used })
+        let contextTask = Task.detached(priority: .utility) { AgentContextUsage.read(for: contextTools) }
         if !menuBarOnly {
             localTokensChecked = false
             localTokens = [:]
@@ -140,7 +141,9 @@ final class AgentUsageMonitor {
         func loadSnapshot(now: Date = Date()) {
             detected = AgentTool.detectedOnThisMac()
             choices = [:]  // the default selection, whatever is saved
-            localTokens = AgentLocalTokens.today(for: Set(shownTools), now: now)
+            let snapshotTools = Set(shownTools).union([.openCode])
+            localTokens = AgentLocalTokens.today(for: snapshotTools, now: now)
+            contextReadings = AgentContextUsage.read(for: snapshotTools, now: now)
             localTokensChecked = true
             let reset = now.addingTimeInterval(3 * 3_600)
             func sample(_ kind: AgentUsageStatus.Kind, _ left: Double) -> AgentUsageStatus {
@@ -152,7 +155,10 @@ final class AgentUsageMonitor {
                             name: "Weekly", remaining: "", resetsAt: reset.addingTimeInterval(3 * 86_400), remainingPercent: 64),
                     ], detail: "Sample allowance", checkedAt: now)
             }
-            statuses = [.claude: sample(.claude, 72), .codex: sample(.codex, 41), .copilot: sample(.copilot, 88)]
+            statuses = [
+                .claude: sample(.claude, 72), .codex: sample(.codex, 41), .copilot: sample(.copilot, 88),
+                .openCode: sample(.openCode, 58),
+            ]
             perchThreads = PerchContext.threads()
             perchChecked = true
             perchCheckedAt = Date()
@@ -197,9 +203,9 @@ final class AgentUsageWindow: NSObject {
 
     var menuBarEntries: [AgentMenuBarText.Entry] {
         monitor.menuBarTools.map { tool in
-            let percent =
-                tool.account.flatMap { monitor.status(for: $0).menuBarRemainingPercent }
-                ?? (tool.reportsContextFill ? monitor.perchThreads.first?.percent : monitor.contextReadings[tool]?.percent)
+            let percent = tool.displayedPercent(
+                allowance: tool.account.flatMap { monitor.status(for: $0).menuBarRemainingPercent },
+                context: tool.reportsContextFill ? monitor.perchThreads.first?.percent : monitor.contextReadings[tool]?.percent)
             return .init(name: tool.menuBarName, percent: percent, reportsUsage: tool.menuBarPercentageMeaning == .used)
         }
     }
@@ -212,7 +218,7 @@ final class AgentUsageWindow: NSObject {
             if tool.reportsContextFill, let percent = monitor.perchThreads.first?.percent {
                 return "\(tool.name): \(Int(percent.rounded())) percent context used"
             }
-            if tool.readsLocalContext, let reading = monitor.contextReadings[tool] {
+            if tool.menuBarPercentageMeaning == .used, let reading = monitor.contextReadings[tool] {
                 if let percent = reading.percent {
                     let checked = reading.observedAt.map { " · \($0.formatted(date: .omitted, time: .shortened))" } ?? ""
                     return "\(tool.name): \(Int(percent.rounded())) percent context used · \(reading.detail)\(checked)"
@@ -431,7 +437,7 @@ private struct AgentUsageView: View {
                             // Click for usage by model and token type, like the hardware cards' detail panels.
                             AgentProviderCard(
                                 tool: tool, status: monitor.status(for: kind), localTokens: monitor.localTokens[tool],
-                                tokensChecked: monitor.localTokensChecked
+                                tokensChecked: monitor.localTokensChecked, context: monitor.contextReadings[tool]
                             )
                             .detailPopover(.agent(tool), selection: $openDetail, edge: detailEdge, tint: tool.tint) {
                                 AgentDetail(tool: tool, monitor: monitor)
@@ -516,6 +522,16 @@ private struct AgentUsageView: View {
                 .background(Color(nsColor: .windowBackgroundColor), in: RoundedRectangle(cornerRadius: 16))
                 .padding(28)
             views.append(("agents-detail", AnyView(detail)))
+            let openCode = AgentDetail(tool: .openCode, monitor: monitor)
+                .background(Color(nsColor: .windowBackgroundColor), in: RoundedRectangle(cornerRadius: 16))
+                .padding(28)
+            views.append(("agents-opencode-detail", AnyView(openCode)))
+            let openCodeCard = AgentProviderCard(
+                tool: .openCode, status: monitor.status(for: .openCode), localTokens: monitor.localTokens[.openCode],
+                tokensChecked: true, context: monitor.contextReadings[.openCode]
+            )
+            .frame(width: 370).padding(12)
+            views.append(("agents-opencode-card", AnyView(openCodeCard)))
             let perch = ContextFillDetail(tool: .perch, monitor: monitor)
                 .background(Color(nsColor: .windowBackgroundColor), in: RoundedRectangle(cornerRadius: 16))
                 .padding(28)
@@ -532,6 +548,7 @@ private struct AgentProviderCard: View {
     let status: AgentUsageStatus
     let localTokens: AgentTokenUsage?
     let tokensChecked: Bool
+    var context: AgentContextReading? = nil
 
     /// The window that limits you first.
     private var tightest: AgentAllowance? {
@@ -573,12 +590,25 @@ private struct AgentProviderCard: View {
             if status.allowances.isEmpty, !status.detail.isEmpty {
                 Text(status.detail)
             }
+            if tool == .openCode {
+                HStack(spacing: 10) {
+                    Stat(label: "Session context", value: context?.percent.map { "\(Int($0.rounded()))%" } ?? "—")
+                    Spacer(minLength: 0)
+                    Stat(label: "Cache reuse", value: AgentUsageStyle.cacheReuse(localTokens?.tally))
+                }
+                .help(
+                    "Session context is a last-response estimate; cache reuse is today's cached share of prompt input. Neither is account allowance."
+                )
+            }
         }
     }
 }
 
 /// Shared number formats and colours for the agent cards.
 private enum AgentUsageStyle {
+    static func cacheReuse(_ tally: TokenTally?) -> String {
+        tally?.cacheReusePercent.map { $0.formatted(.number.precision(.fractionLength(1))) + "%" } ?? "—"
+    }
     /// The agent's colour, orange at 25 % left and red at 10 % left (75 % / 90 % used).
     static func color(_ percentLeft: Double, tint: Color) -> Color {
         percentLeft <= 10 ? .red : percentLeft <= 25 ? .orange : tint
@@ -809,9 +839,9 @@ private struct AgentLocalCard: View {
                         }
                     }
                     Spacer(minLength: 0)
-                    let percent =
-                        tool.account.flatMap { monitor.status(for: $0).menuBarRemainingPercent }
-                        ?? (tool.reportsContextFill
+                    let percent = tool.displayedPercent(
+                        allowance: tool.account.flatMap { monitor.status(for: $0).menuBarRemainingPercent },
+                        context: tool.reportsContextFill
                             ? monitor.perchThreads.first?.percent : monitor.contextReadings[tool]?.percent)
                     let usesContext = tool.menuBarPercentageMeaning == .used
                     if let percent {
@@ -848,10 +878,14 @@ private struct AgentDetail: View {
         ) {
             ModelBreakdown(title: "By Model", usage: usage, tint: tool.tint, checked: monitor.localTokensChecked)
             if showProjects { ProjectBreakdown(tool: tool, usage: usage, checked: monitor.localTokensChecked) }
+            if tool == .openCode {
+                OpenCodeUsageInfo(reading: monitor.contextReadings[tool], usage: usage)
+            }
         } trailing: {
             TokenTypeBreakdown(usage: usage, checked: monitor.localTokensChecked)
             if let status { AccountDetail(status: status) }
-            if tool.readsLocalContext {
+            if tool == .openCode { OpenCodeResponseInfo(reading: monitor.contextReadings[tool]) }
+            if tool.readsLocalContext && tool != .openCode {
                 DetailSection("Context Usage") {
                     if let reading = monitor.contextReadings[tool] {
                         DetailRow("Used", reading.percent.map { "\(Int($0.rounded()))%" } ?? "Unavailable")
@@ -877,6 +911,57 @@ private struct AgentDetail: View {
     }
 }
 
+/// Extra OpenCode metadata remains separate from account allowance and today's cumulative spend.
+private struct OpenCodeUsageInfo: View {
+    let reading: AgentContextReading?
+    let usage: AgentTokenUsage?
+
+    var body: some View {
+        DetailSection("Session Context") {
+            DetailRow("Used", reading?.percent.map { "\(Int($0.rounded()))%" } ?? "Unavailable")
+            if let used = reading?.used { DetailRow("Context tokens", used.formatted()) }
+            if let capacity = reading?.capacity { DetailRow("Window capacity", capacity.formatted()) }
+            Text(reading?.detail ?? "Checking context…")
+                .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            Text(
+                "Most recently used local session. Estimated from its last valid response, not a live window reading or account allowance."
+            )
+            .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+        }
+        DetailSection("Cache Reuse") {
+            DetailRow("Today", AgentUsageStyle.cacheReuse(usage?.tally))
+            DetailRow("Last response", AgentUsageStyle.cacheReuse(reading?.lastResponse))
+            Text(
+                "Cache reads ÷ (fresh input + cache reads + cache writes). Excludes output and reasoning; this is not a billing discount."
+            )
+            .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+        }
+    }
+}
+
+private struct OpenCodeResponseInfo: View {
+    let reading: AgentContextReading?
+
+    var body: some View {
+        DetailSection("Last Response") {
+            if let tally = reading?.lastResponse {
+                if let model = reading?.model { DetailRow("Model", model) }
+                if let provider = reading?.provider { DetailRow("Provider", provider) }
+                if let time = reading?.observedAt {
+                    DetailRow("Observed", time.formatted(date: .abbreviated, time: .shortened))
+                }
+                DetailRow("Input", tally.input.formatted())
+                DetailRow("Cache read", tally.cacheRead.formatted())
+                DetailRow("Cache write", tally.cacheWrite.formatted())
+                DetailRow("Output", tally.output.formatted())
+                DetailRow("Reasoning", tally.reasoning.formatted())
+            } else {
+                EmptyRow(text: "No recent valid response recorded")
+            }
+        }
+    }
+}
+
 /// Kilo's last recorded response is a window estimate, not its cumulative daily usage or a live reading.
 private struct KiloContextInfo: View {
     let reading: AgentContextReading
@@ -889,17 +974,11 @@ private struct KiloContextInfo: View {
             DetailRow("Last output", tally.output.formatted())
             DetailRow("Last reasoning", tally.reasoning.formatted())
         }
-        Text(
-            "Uses the last response with recorded usage; aborted or pending requests do not mean 0% context. "
-                + "This is separate from today's token total."
-        )
-        .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-        if reading.model?.hasPrefix("kilo-auto/") == true {
-            Text(
-                "Auto routing does not identify the underlying model here. "
-                    + "Window capacity comes from the model catalog and may differ from the routed model."
-            )
+        Text("Last valid response, not today's total.")
             .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+        if reading.model?.hasPrefix("kilo-auto/") == true {
+            Text("Auto routing: model unknown, window size estimated.")
+                .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
         }
     }
 }
@@ -1062,7 +1141,10 @@ private struct OtherAgentsDetail: View {
         if let kind = tool.account {
             AccountDetail(status: monitor.status(for: kind), title: "\(tool.name) Account")
         }
-        if let reading = monitor.contextReadings[tool] {
+        if tool == .openCode {
+            OpenCodeUsageInfo(reading: monitor.contextReadings[tool], usage: monitor.localTokens[tool])
+            OpenCodeResponseInfo(reading: monitor.contextReadings[tool])
+        } else if let reading = monitor.contextReadings[tool] {
             DetailSection("\(tool.name) Context") {
                 DetailRow("Used", reading.percent.map { "\(Int($0.rounded()))%" } ?? "Unavailable")
                 if let used = reading.used { DetailRow("Context tokens", used.formatted()) }

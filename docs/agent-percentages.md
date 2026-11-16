@@ -15,6 +15,7 @@ The tooltip identifies the meaning. Context readings derived from a response are
 
 | Agent | Percentage source |
 |---|---|
+| OpenCode | The menu-bar percentage remains account allowance remaining. A separate panel/detail reading estimates context from the latest valid assistant response in the most recently used local session (`session_message`, or legacy `message`). It includes model/provider, observation time, token types and cache reuse. Pending, failed and aborted responses are skipped; compaction or model changes invalidate earlier readings. |
 | Gemini CLI | Existing Google OAuth access token; Code Assist `loadCodeAssist` and `retrieveUserQuota` endpoints, using `remainingFraction` and `resetTime` per quota bucket. |
 | Qwen Code | Latest saved assistant `usageMetadata.promptTokenCount` and `contextWindowSize` in project JSONL recordings. |
 | Cline | Latest task `api_req_started` metadata, including input, output and cache counts; model identity from `modelInfo`. Also reads CLI reply metrics. |
@@ -29,6 +30,8 @@ The tooltip identifies the meaning. Context readings derived from a response are
 Explicit recorded capacities take precedence, followed by configured custom-model capacities. For known models without a recorded capacity, AAYRA bundles a capacity-only snapshot of the [Oh My Pi model catalog](https://github.com/can1357/oh-my-pi/blob/main/packages/catalog/src/models.json), retrieved 2026-11-13 and folded so a model every provider agrees on is stored once; ids that contain a slash stay provider-qualified so they can't shadow another model's key. It ships as a 31 KB raw DEFLATE stream (`Resources/AgentContextModels.deflate`, rebuilt with `scripts/make-context-models.py`) and is read once, lazily. Provider and model identities are matched exactly; an unqualified model is used only when all catalog providers agree on its capacity. These fallback readings are estimates: provider overrides or changes after the catalog snapshot can make the real capacity different.
 
 The integrations are read-only. They do not modify agent configuration, start a model conversation, install extensions, or attach to an existing live RPC session. Some agent versions expose context only in a live API and omit the required metadata from disk; AAYRA shows **Unavailable / —** in those cases rather than inferring capacity from cumulative spend. Unknown models, scan limits, missing files, and sessions older than 24 hours also yield unavailable readings. Not every installed version has been tested live.
+
+OpenCode cache reuse is `cache read / (fresh input + cache read + cache write)`, shown separately for today's usage and the last response. Output and reasoning are excluded; no recorded prompt input means unavailable rather than 0%. Cache reuse is not an inferred billing discount, and context usage never substitutes for a missing account allowance.
 
 Gemini quota support requires an unexpired Google sign-in belonging to Gemini CLI. API-key-only installations do not provide this account quota. AAYRA never redeems refresh tokens or writes credentials. Requests use provider pacing, redirect rejection, and 429 backoff. A full quota can omit `remainingAmount`; `remainingFraction: 1` still correctly means 100% remaining. These are the quota buckets Google reports, which may not describe every backend limit.
 
